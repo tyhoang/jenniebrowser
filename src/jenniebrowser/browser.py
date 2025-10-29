@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QToolBar,
     QVBoxLayout,
 )
-from PyQt6.QtWebEngineCore import QWebEngineProfile
+from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from .adblocker import AdBlocker, RuleSet
@@ -65,10 +65,10 @@ class BrowserWindow(QMainWindow):
         self._toolbar = self._build_toolbar()
         self.addToolBar(self._toolbar)
 
+        self._apply_privacy_defaults()
+        self._enable_media_support()
         self._shortcuts = []
         self._install_shortcuts()
-
-        self._apply_privacy_defaults()
         self._apply_settings()
 
         self.load_homepage()
@@ -97,12 +97,6 @@ class BrowserWindow(QMainWindow):
         toolbar.addAction(home_action)
 
         toolbar.addWidget(self._address_bar)
-
-        self._adblock_action = QAction("Ad Block", self)
-        self._adblock_action.setCheckable(True)
-        self._adblock_action.setChecked(self._adblocker.is_enabled())
-        self._adblock_action.triggered.connect(self._toggle_adblock)
-        toolbar.addAction(self._adblock_action)
 
         settings_action = QAction("Settings", self)
         settings_action.triggered.connect(self._open_settings_dialog)
@@ -141,18 +135,11 @@ class BrowserWindow(QMainWindow):
             self._status_bar.showMessage("Failed to load page", 4000)
             QMessageBox.warning(self, "Load Error", "The page could not be loaded.")
 
-    def _toggle_adblock(self, checked: bool) -> None:
-        self._adblocker.set_enabled(checked)
-        state = "enabled" if checked else "disabled"
-        self._status_bar.showMessage(f"Ad blocking {state}", 2000)
-        self._settings.update(adblock_enabled=checked)
-
     def _open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self._settings, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._settings = dialog.apply()
             self._apply_settings()
-            self._adblock_action.setChecked(self._settings.adblock_enabled)
             self._status_bar.showMessage("Settings updated", 2000)
 
     # ------------------------------------------------------------------
@@ -185,6 +172,9 @@ class BrowserWindow(QMainWindow):
             (QKeySequence("Shift+L"), self._web_view.forward),
             (QKeySequence("R"), self._web_view.reload),
             (QKeySequence("O"), self._focus_address_bar),
+            (QKeySequence("J"), self._scroll_down),
+            (QKeySequence("K"), self._scroll_up),
+            (QKeySequence("Escape"), self._maybe_unfocus_address_bar),
         ]
         for sequence, handler in mappings:
             shortcut = QShortcut(sequence, self)
@@ -195,11 +185,43 @@ class BrowserWindow(QMainWindow):
         self._address_bar.setFocus()
         self._address_bar.selectAll()
 
+    def _maybe_unfocus_address_bar(self) -> None:
+        if self._address_bar.hasFocus():
+            self._address_bar.deselect()
+            self._address_bar.clearFocus()
+            self._web_view.setFocus()
+
+    def _scroll_down(self) -> None:
+        self._web_view.page().runJavaScript(
+            "window.scrollBy({top: 120, left: 0, behavior: 'smooth'});"
+        )
+
+    def _scroll_up(self) -> None:
+        self._web_view.page().runJavaScript(
+            "window.scrollBy({top: -120, left: 0, behavior: 'smooth'});"
+        )
+
     def _apply_privacy_defaults(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         profile.setHttpCacheMaximumSize(0)
+
+    def _enable_media_support(self) -> None:
+        page = self._web_view.page()
+        page.setAudioMuted(False)
+        settings = self._web_view.settings()
+        attribute_map = {
+            "FullScreenSupportEnabled": True,
+            "PluginsEnabled": True,
+            "JavascriptEnabled": True,
+            "PlaybackRequiresUserGesture": False,
+        }
+        for name, value in attribute_map.items():
+            attribute = getattr(QWebEngineSettings.WebAttribute, name, None)
+            if attribute is not None:
+                settings.setAttribute(attribute, value)
+        page.fullScreenRequested.connect(lambda request: request.accept())
 
     def _apply_settings(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
