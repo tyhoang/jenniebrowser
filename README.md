@@ -13,18 +13,28 @@ address bar) and bundles a lightweight rule-based ad blocker.
 
 ## Getting Started
 
-1. Install the dependencies. A modern Python (3.9+) plus the Qt bindings are
-   required:
+1. Install the project (this will also bring in the PyQt dependencies). A
+   modern Python (3.9+) is required:
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements.txt
+    
+   # Install JennieBrowser in editable mode so the package is on your PYTHONPATH
+   pip install -e .
    ```
+
+   > If you prefer not to install the package, replace the last command with
+   > `pip install -r requirements.txt` and set `PYTHONPATH=src` before running
+   > the application.
 
 2. Launch the browser:
 
    ```bash
+   # Installed entry point
+   jenniebrowser
+
+   # …or invoke the module directly
    python -m jenniebrowser.app
    ```
 
