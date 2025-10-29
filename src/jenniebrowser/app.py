@@ -52,7 +52,8 @@ def main(argv: List[str] | None = None) -> int:
     icon_path = Path(__file__).resolve().parent / "resources" / "icon.png"
     window_icon = QIcon(str(icon_path)) if icon_path.exists() else None
 
-    homepage = args.start or args.homepage
+    start_url = args.start
+    homepage = args.homepage
     filters = _collect_filter_paths(args.filters)
 
     window = BrowserWindow(
@@ -60,6 +61,7 @@ def main(argv: List[str] | None = None) -> int:
         rule_paths=filters,
         adblock_enabled=not args.no_adblock,
         window_icon=window_icon,
+        start_url=start_url,
     )
     window.show()
     return app.exec()
