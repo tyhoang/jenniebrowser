@@ -447,6 +447,11 @@ class BrowserWindow(QMainWindow):
                 self._address_bar.setText(url.toString())
 
     def _on_load_finished(self, view: QWebEngineView, ok: bool) -> None:
+        suppress_error = bool(view.property("jenniebrowser_media_suppress_error"))
+        if not ok and suppress_error:
+            view.setProperty("jenniebrowser_media_suppress_error", False)
+            return
+
         if view is self._current_web_view():
             if ok:
                 self._status_bar.showMessage("Loaded", 2000)
@@ -480,16 +485,19 @@ class BrowserWindow(QMainWindow):
 
         if not url.isValid():
             view.setProperty("jenniebrowser_media_source", None)
+            view.setProperty("jenniebrowser_media_suppress_error", False)
             return False
 
         scheme = url.scheme().lower()
         if scheme not in {"http", "https", "file"}:
             view.setProperty("jenniebrowser_media_source", None)
+            view.setProperty("jenniebrowser_media_suppress_error", False)
             return False
 
         path = url.path().lower()
         if not any(path.endswith(ext) for ext in (".mp4", ".m4v", ".mov")):
             view.setProperty("jenniebrowser_media_source", None)
+            view.setProperty("jenniebrowser_media_suppress_error", False)
             return False
 
         url_string = url.toString()
@@ -497,7 +505,10 @@ class BrowserWindow(QMainWindow):
         if isinstance(current_source, str) and current_source == url_string:
             return True
 
+        view.stop()
+
         view.setProperty("jenniebrowser_media_source", url_string)
+        view.setProperty("jenniebrowser_media_suppress_error", True)
 
         safe_title = escape(url.fileName() or "MP4 Video")
         safe_src = escape(url_string)
