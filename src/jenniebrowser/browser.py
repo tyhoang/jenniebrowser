@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -638,11 +639,22 @@ class BrowserWindow(QMainWindow):
         view.setFocus()
 
     def _on_url_changed(self, view: QWebEngineView, url: QUrl) -> None:
+        if self._maybe_embed_media(view, url):
+            if view is self._current_web_view():
+                if url.toString() != self._address_bar.text():
+                    self._address_bar.setText(url.toString())
+            return
+
         if view is self._current_web_view():
             if url.toString() != self._address_bar.text():
                 self._address_bar.setText(url.toString())
 
     def _on_load_finished(self, view: QWebEngineView, ok: bool) -> None:
+        suppress_error = bool(view.property("jenniebrowser_media_suppress_error"))
+        if not ok and suppress_error:
+            view.setProperty("jenniebrowser_media_suppress_error", False)
+            return
+
         if view is self._current_web_view():
             if ok:
                 self._status_bar.showMessage("Loaded", 2000)
@@ -662,6 +674,97 @@ class BrowserWindow(QMainWindow):
         index = self._tab_widget.indexOf(view)
         if index != -1:
             self._tab_widget.setTabIcon(index, icon)
+
+    def _maybe_embed_media(self, view: QWebEngineView, url: QUrl) -> bool:
+        """Render known media types inside a simple HTML player.
+
+        Some servers serve MP4 files directly without wrapping them in a page.
+        Qt's web engine will otherwise just stream the raw file contents. By
+        wrapping recognised video types in a small HTML document we ensure they
+        play inline with controls. The method returns ``True`` when a wrapper
+        page was injected so the caller can stop further processing of the
+        navigation event.
+        """
+
+        if not url.isValid():
+            view.setProperty("jenniebrowser_media_source", None)
+            view.setProperty("jenniebrowser_media_suppress_error", False)
+            return False
+
+        scheme = url.scheme().lower()
+        if scheme not in {"http", "https", "file"}:
+            view.setProperty("jenniebrowser_media_source", None)
+            view.setProperty("jenniebrowser_media_suppress_error", False)
+            return False
+
+        path = url.path().lower()
+        if not any(path.endswith(ext) for ext in (".mp4", ".m4v", ".mov")):
+            view.setProperty("jenniebrowser_media_source", None)
+            view.setProperty("jenniebrowser_media_suppress_error", False)
+            return False
+
+        url_string = url.toString()
+        current_source = view.property("jenniebrowser_media_source")
+        if isinstance(current_source, str) and current_source == url_string:
+            return True
+
+        view.stop()
+
+        view.setProperty("jenniebrowser_media_source", url_string)
+        view.setProperty("jenniebrowser_media_suppress_error", True)
+
+        safe_title = escape(url.fileName() or "MP4 Video")
+        safe_src = escape(url_string)
+        html = f"""<!DOCTYPE html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\">
+    <title>{safe_title}</title>
+    <style>
+      body {{
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }}
+      main {{
+        width: 100%;
+        padding: 1rem;
+        box-sizing: border-box;
+      }}
+      video {{
+        display: block;
+        margin: 0 auto;
+        max-width: 100%;
+        max-height: calc(100vh - 2rem);
+        background: #000;
+      }}
+      p {{
+        text-align: center;
+        margin-top: 1rem;
+        font-size: 0.95rem;
+      }}
+      a {{
+        color: #8ab4f8;
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <video controls autoplay playsinline preload=\"metadata\">
+        <source src=\"{safe_src}\" type=\"video/mp4\">
+        <p>Your system cannot play this MP4 file. <a href=\"{safe_src}\">Download the video</a> instead.</p>
+      </video>
+    </main>
+  </body>
+</html>"""
+
+        view.setHtml(html, baseUrl=url)
+        return True
 
     def _open_history_dialog(self) -> None:
         dialog = HistoryDialog(self._history, self)
