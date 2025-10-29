@@ -54,6 +54,7 @@ class BrowserWindow(QMainWindow):
         rule_paths: Iterable[Path],
         adblock_enabled: bool = True,
         window_icon: Optional[QIcon] = None,
+        start_url: str | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("JennieBrowser")
@@ -64,6 +65,12 @@ class BrowserWindow(QMainWindow):
         self._homepage = homepage
         self._settings = BrowserSettings.load()
         self._history = BrowserHistory.load()
+        resources_dir = Path(__file__).resolve().parent / "resources"
+        start_page_path = resources_dir / "startpage.html"
+        if start_page_path.exists():
+            self._start_page_url = QUrl.fromLocalFile(str(start_page_path))
+        else:
+            self._start_page_url = QUrl("about:blank")
         self._tab_widget = QTabWidget(self)
         self._tab_widget.setDocumentMode(True)
         self._tab_widget.setMovable(True)
@@ -103,9 +110,9 @@ class BrowserWindow(QMainWindow):
         self._stored_geometry: QByteArray | None = None
         self._install_shortcuts()
         self._apply_settings()
-        self._add_tab(self._start_page_url, focus=start_url is None)
-        if start_url is not None:
-            self._add_tab(start_url, focus=True)
+        self._add_tab(self._start_page_url)
+        if start_url:
+            self._add_tab(start_url)
         self._on_current_tab_changed(self._tab_widget.currentIndex())
 
     # ------------------------------------------------------------------
@@ -222,6 +229,7 @@ class BrowserWindow(QMainWindow):
             (QKeySequence("Shift+L"), self._navigate_forward),
             (QKeySequence("R"), self._reload_current),
             (QKeySequence("O"), self._focus_address_bar),
+            (QKeySequence("Ctrl+L"), self._focus_address_bar),
             (QKeySequence("J"), self._scroll_down),
             (QKeySequence("K"), self._scroll_up),
             (QKeySequence("Escape"), self._clear_text_focus),
@@ -382,17 +390,19 @@ class BrowserWindow(QMainWindow):
         view.iconChanged.connect(lambda icon, view=view: self._update_tab_icon(view, icon))
         return view
 
-    def _add_tab(self, url: QUrl | str | None = None, *, focus: bool = True) -> QWebEngineView:
+    def _add_tab(self, url: str | QUrl | None = None, *, focus: bool = True) -> QWebEngineView:
         view = self._create_web_view()
         index = self._tab_widget.addTab(view, "New Tab")
         if focus:
             self._tab_widget.setCurrentIndex(index)
         if isinstance(url, QUrl):
             target = url
-        elif url:
+        elif isinstance(url, str):
             target = QUrl.fromUserInput(url)
         else:
             target = self._start_page_url
+        if not target.isValid():
+            target = QUrl("about:blank")
         view.setUrl(target)
         return view
 
@@ -409,7 +419,7 @@ class BrowserWindow(QMainWindow):
         if self._tab_widget.count() == 1:
             view = self._tab_widget.widget(index)
             if isinstance(view, QWebEngineView):
-                view.setUrl(self._start_page_url)
+                view.setUrl(self._start_page_url if self._start_page_url.isValid() else QUrl("about:blank"))
                 self._tab_widget.setTabText(index, "New Tab")
                 self._tab_widget.setTabIcon(index, QIcon())
             self._address_bar.clear()
