@@ -35,12 +35,20 @@ from .history import BrowserHistory
 from .settings import BrowserSettings, CONFIG_DIR
 
 
+_START_PAGE_PATH = Path(__file__).resolve().parent / "resources" / "startpage.html"
+if _START_PAGE_PATH.exists():
+    _START_PAGE_URL = QUrl.fromLocalFile(str(_START_PAGE_PATH))
+else:
+    _START_PAGE_URL = QUrl("about:blank")
+
+
 class BrowserWindow(QMainWindow):
     """Single window browser with a minimal user interface."""
 
     def __init__(
         self,
         *,
+        start_url: QUrl | str | None = None,
         homepage: str,
         rule_paths: Iterable[Path],
         adblock_enabled: bool = True,
@@ -51,6 +59,7 @@ class BrowserWindow(QMainWindow):
         if window_icon is not None:
             self.setWindowIcon(window_icon)
 
+        self._start_page_url = _START_PAGE_URL
         self._homepage = homepage
         self._settings = BrowserSettings.load()
         self._history = BrowserHistory.load()
@@ -93,7 +102,9 @@ class BrowserWindow(QMainWindow):
         self._stored_geometry: QByteArray | None = None
         self._install_shortcuts()
         self._apply_settings()
-        self._add_tab(self._homepage)
+        self._add_tab(self._start_page_url, focus=start_url is None)
+        if start_url is not None:
+            self._add_tab(start_url, focus=True)
         self._on_current_tab_changed(self._tab_widget.currentIndex())
 
     # ------------------------------------------------------------------
@@ -364,20 +375,22 @@ class BrowserWindow(QMainWindow):
         view.iconChanged.connect(lambda icon, view=view: self._update_tab_icon(view, icon))
         return view
 
-    def _add_tab(self, url: str | None = None, *, focus: bool = True) -> QWebEngineView:
+    def _add_tab(self, url: QUrl | str | None = None, *, focus: bool = True) -> QWebEngineView:
         view = self._create_web_view()
         index = self._tab_widget.addTab(view, "New Tab")
         if focus:
             self._tab_widget.setCurrentIndex(index)
-        if url:
+        if isinstance(url, QUrl):
+            target = url
+        elif url:
             target = QUrl.fromUserInput(url)
         else:
-            target = QUrl("about:blank")
+            target = self._start_page_url
         view.setUrl(target)
         return view
 
     def _open_new_tab(self) -> None:
-        self._add_tab(self._homepage)
+        self._add_tab(None)
         self._focus_address_bar()
 
     def _close_current_tab(self) -> None:
@@ -389,7 +402,7 @@ class BrowserWindow(QMainWindow):
         if self._tab_widget.count() == 1:
             view = self._tab_widget.widget(index)
             if isinstance(view, QWebEngineView):
-                view.setUrl(QUrl("about:blank"))
+                view.setUrl(self._start_page_url)
                 self._tab_widget.setTabText(index, "New Tab")
                 self._tab_widget.setTabIcon(index, QIcon())
             self._address_bar.clear()
