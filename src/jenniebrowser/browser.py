@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QToolBar,
     QTabWidget,
     QToolButton,
-    QStyle,
+    QVBoxLayout,
 )
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest, QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -132,8 +132,11 @@ class BrowserWindow(QMainWindow):
 
         toolbar.addWidget(self._address_bar)
 
-        settings_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView)
-        settings_action = QAction(settings_icon, "Settings", self)
+        history_action = QAction("History", self)
+        history_action.triggered.connect(self._open_history_dialog)
+        toolbar.addAction(history_action)
+
+        settings_action = QAction("Settings", self)
         settings_action.triggered.connect(self._open_settings_dialog)
         settings_action.setToolTip("Settings")
         toolbar.addAction(settings_action)
@@ -262,10 +265,16 @@ class BrowserWindow(QMainWindow):
     def _apply_privacy_defaults(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
         storage_root = CONFIG_DIR / "profile"
-        storage_root.mkdir(parents=True, exist_ok=True)
-        profile.setPersistentStoragePath(str(storage_root / "storage"))
-        profile.setCachePath(str(storage_root / "cache"))
-        profile.setPersistentCookieStorePath(str(storage_root / "cookies"))
+        storage_dir = storage_root / "storage"
+        cache_dir = storage_root / "cache"
+        cookies_dir = storage_root / "cookies"
+        for path in (storage_dir, cache_dir, cookies_dir):
+            path.mkdir(parents=True, exist_ok=True)
+
+        profile.setPersistentStoragePath(str(storage_dir))
+        profile.setCachePath(str(cache_dir))
+        if hasattr(profile, "setPersistentCookieStorePath"):
+            profile.setPersistentCookieStorePath(str(cookies_dir))
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
         profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
