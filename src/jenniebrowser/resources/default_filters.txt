@@ -19,3 +19,10 @@
 ||quantserve.com
 ||demdex.net
 ||serving-sys.com
+|https://www.youtube.com/pagead/
+|https://www.youtube.com/api/stats/ads
+|https://www.youtube.com/api/stats/qoe?
+|https://www.youtube.com/youtubei/v1/next?
+|https://www.youtube.com/youtubei/v1/player/ad
+|https://www.youtube.com/get_midroll_info
+||youtubeads.googleapis.com
