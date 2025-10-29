@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from PyQt6.QtCore import QUrl, Qt
-from PyQt6.QtGui import QAction, QIcon, QKeyCombination, QKeySequence, QShortcut
+from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -181,13 +181,13 @@ class BrowserWindow(QMainWindow):
 
     def _install_shortcuts(self) -> None:
         mappings = [
-            (QKeyCombination(Qt.KeyboardModifier.ShiftModifier, Qt.Key.Key_H), self._web_view.back),
-            (QKeyCombination(Qt.KeyboardModifier.ShiftModifier, Qt.Key.Key_L), self._web_view.forward),
-            (QKeyCombination(Qt.KeyboardModifier.NoModifier, Qt.Key.Key_R), self._web_view.reload),
-            (QKeyCombination(Qt.KeyboardModifier.NoModifier, Qt.Key.Key_O), self._focus_address_bar),
+            (QKeySequence("Shift+H"), self._web_view.back),
+            (QKeySequence("Shift+L"), self._web_view.forward),
+            (QKeySequence("R"), self._web_view.reload),
+            (QKeySequence("O"), self._focus_address_bar),
         ]
-        for combo, handler in mappings:
-            shortcut = QShortcut(QKeySequence(combo), self)
+        for sequence, handler in mappings:
+            shortcut = QShortcut(sequence, self)
             shortcut.activated.connect(handler)  # type: ignore[arg-type]
             self._shortcuts.append(shortcut)
 
