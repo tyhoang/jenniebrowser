@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jenniebrowser"
+version = "0.1.0"
+description = "A minimal PyQt web browser with lightweight ad blocking"
+authors = [{name = "JennieBrowser Maintainers"}]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+dependencies = [
+    "PyQt6>=6.5",
+    "PyQt6-WebEngine>=6.5",
+]
+
+[project.scripts]
+jenniebrowser = "jenniebrowser.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"jenniebrowser" = ["resources/*.txt", "resources/*.png"]
