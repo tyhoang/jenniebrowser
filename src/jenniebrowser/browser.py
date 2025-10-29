@@ -29,8 +29,13 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
 )
-from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest, QWebEngineProfile, QWebEngineSettings
-from PyQt6.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
+from PyQt6.QtWebEngineCore import (
+    QWebEngineFullScreenRequest,
+    QWebEnginePage,
+    QWebEngineProfile,
+    QWebEngineSettings,
+)
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from .adblocker import AdBlocker, RuleSet
 from .history import BrowserHistory
