@@ -54,7 +54,6 @@ class BrowserWindow(QMainWindow):
         rule_paths: Iterable[Path],
         adblock_enabled: bool = True,
         window_icon: Optional[QIcon] = None,
-        start_url: str | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("JennieBrowser")
