@@ -2,32 +2,37 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
 from PyQt6.QtCore import QUrl, Qt, QByteArray
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QSizePolicy,
     QStatusBar,
     QToolBar,
     QTabWidget,
-    QVBoxLayout,
     QToolButton,
+    QVBoxLayout,
 )
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest, QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from .adblocker import AdBlocker, RuleSet
-from .settings import BrowserSettings
+from .history import BrowserHistory
+from .settings import BrowserSettings, CONFIG_DIR
 
 
 class BrowserWindow(QMainWindow):
@@ -48,6 +53,7 @@ class BrowserWindow(QMainWindow):
 
         self._homepage = homepage
         self._settings = BrowserSettings.load()
+        self._history = BrowserHistory.load()
         self._tab_widget = QTabWidget(self)
         self._tab_widget.setDocumentMode(True)
         self._tab_widget.setMovable(True)
@@ -114,6 +120,10 @@ class BrowserWindow(QMainWindow):
         toolbar.addAction(home_action)
 
         toolbar.addWidget(self._address_bar)
+
+        history_action = QAction("History", self)
+        history_action.triggered.connect(self._open_history_dialog)
+        toolbar.addAction(history_action)
 
         settings_action = QAction("Settings", self)
         settings_action.triggered.connect(self._open_settings_dialog)
@@ -242,9 +252,14 @@ class BrowserWindow(QMainWindow):
 
     def _apply_privacy_defaults(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
-        profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
-        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
-        profile.setHttpCacheMaximumSize(64 * 1024 * 1024)
+        storage_root = CONFIG_DIR / "profile"
+        storage_root.mkdir(parents=True, exist_ok=True)
+        profile.setPersistentStoragePath(str(storage_root / "storage"))
+        profile.setCachePath(str(storage_root / "cache"))
+        profile.setPersistentCookieStorePath(str(storage_root / "cookies"))
+        profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
         profile.setHttpUserAgent(
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -388,6 +403,7 @@ class BrowserWindow(QMainWindow):
                 QMessageBox.warning(self, "Load Error", "The page could not be loaded.")
         if ok:
             self._update_tab_title(view, view.title() or "New Tab")
+            self._history.add_entry(view.url().toString(), view.title())
 
     def _update_tab_title(self, view: QWebEngineView, title: str) -> None:
         index = self._tab_widget.indexOf(view)
@@ -398,6 +414,13 @@ class BrowserWindow(QMainWindow):
         index = self._tab_widget.indexOf(view)
         if index != -1:
             self._tab_widget.setTabIcon(index, icon)
+
+    def _open_history_dialog(self) -> None:
+        dialog = HistoryDialog(self._history, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            url = dialog.selected_url()
+            if url:
+                self._load_url(url)
 
     def _navigate_back(self) -> None:
         view = self._current_web_view()
@@ -413,6 +436,60 @@ class BrowserWindow(QMainWindow):
         view = self._current_web_view()
         if view is not None:
             view.reload()
+
+
+class HistoryDialog(QDialog):
+    """Simple dialog to inspect and open browsing history entries."""
+
+    def __init__(self, history: BrowserHistory, parent: QMainWindow | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Browsing History")
+        self.resize(500, 420)
+
+        layout = QVBoxLayout(self)
+        self._list = QListWidget(self)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        layout.addWidget(self._list)
+
+        for entry in history.entries():
+            try:
+                when = datetime.fromisoformat(entry.timestamp).strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                when = entry.timestamp
+            text = f"{entry.title}\n{entry.url}\n{when}"
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, entry.url)
+            item.setToolTip(entry.url)
+            self._list.addItem(item)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self._open_button = buttons.addButton("Open", QDialogButtonBox.ButtonRole.AcceptRole)
+        self._open_button.setEnabled(False)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._list.currentItemChanged.connect(self._on_current_item_changed)
+        self._list.itemDoubleClicked.connect(lambda _: self.accept())
+        self._list.itemActivated.connect(lambda _: self.accept())
+
+    def _on_current_item_changed(
+        self,
+        current: QListWidgetItem | None,
+        previous: QListWidgetItem | None,  # noqa: ARG002
+    ) -> None:
+        self._open_button.setEnabled(current is not None)
+
+    def selected_url(self) -> str:
+        item = self._list.currentItem()
+        if item is None:
+            return ""
+        data = item.data(Qt.ItemDataRole.UserRole)
+        return str(data) if data is not None else ""
+
+    def accept(self) -> None:  # type: ignore[override]
+        if self.selected_url():
+            super().accept()
 
 
 class SettingsDialog(QDialog):
