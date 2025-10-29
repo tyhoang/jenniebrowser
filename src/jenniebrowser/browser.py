@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Optional
 
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import QUrl, Qt, QByteArray
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QToolBar,
     QTabWidget,
     QVBoxLayout,
+    QToolButton,
 )
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest, QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -55,6 +56,17 @@ class BrowserWindow(QMainWindow):
         self._tab_widget.currentChanged.connect(self._on_current_tab_changed)
         self.setCentralWidget(self._tab_widget)
 
+        self._new_tab_action = QAction("New Tab", self)
+        self._new_tab_action.triggered.connect(self._open_new_tab)
+
+        self._new_tab_button = QToolButton(self)
+        self._new_tab_button.setDefaultAction(self._new_tab_action)
+        self._new_tab_button.setAutoRaise(True)
+        self._new_tab_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._new_tab_button.setText("+")
+        self._new_tab_button.setToolTip("Open a new tab (Ctrl+T)")
+        self._tab_widget.setCornerWidget(self._new_tab_button, Qt.Corner.TopRightCorner)
+
         self._adblocker = self._install_adblocker(rule_paths, self._settings.adblock_enabled and adblock_enabled)
 
         self._status_bar = QStatusBar(self)
@@ -71,6 +83,8 @@ class BrowserWindow(QMainWindow):
 
         self._apply_privacy_defaults()
         self._shortcuts = []
+        self._is_fullscreen = False
+        self._stored_geometry: QByteArray | None = None
         self._install_shortcuts()
         self._apply_settings()
         self._add_tab(self._homepage)
@@ -98,10 +112,6 @@ class BrowserWindow(QMainWindow):
         home_action = QAction("Home", self)
         home_action.triggered.connect(self.load_homepage)
         toolbar.addAction(home_action)
-
-        new_tab_action = QAction("New Tab", self)
-        new_tab_action.triggered.connect(self._open_new_tab)
-        toolbar.addAction(new_tab_action)
 
         toolbar.addWidget(self._address_bar)
 
@@ -174,9 +184,11 @@ class BrowserWindow(QMainWindow):
             (QKeySequence("O"), self._focus_address_bar),
             (QKeySequence("J"), self._scroll_down),
             (QKeySequence("K"), self._scroll_up),
-            (QKeySequence("Escape"), self._maybe_unfocus_address_bar),
+            (QKeySequence("Escape"), self._clear_text_focus),
             (QKeySequence("Shift+T"), self._open_new_tab),
             (QKeySequence("Shift+W"), self._close_current_tab),
+            (QKeySequence("Ctrl+T"), self._open_new_tab),
+            (QKeySequence("Ctrl+W"), self._close_current_tab),
         ]
         for sequence, handler in mappings:
             shortcut = QShortcut(sequence, self)
@@ -187,13 +199,34 @@ class BrowserWindow(QMainWindow):
         self._address_bar.setFocus()
         self._address_bar.selectAll()
 
-    def _maybe_unfocus_address_bar(self) -> None:
-        if self._address_bar.hasFocus():
+    def _clear_text_focus(self) -> None:
+        view = self._current_web_view()
+        address_bar_had_focus = self._address_bar.hasFocus()
+        if address_bar_had_focus:
             self._address_bar.deselect()
             self._address_bar.clearFocus()
-            view = self._current_web_view()
-            if view is not None:
-                view.setFocus()
+
+        if view is not None:
+            script = """
+                (function() {
+                    let cleared = false;
+                    const active = document.activeElement;
+                    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+                        active.blur();
+                        cleared = true;
+                    }
+                    const selection = window.getSelection();
+                    if (selection && selection.rangeCount > 0) {
+                        selection.removeAllRanges();
+                        cleared = true;
+                    }
+                    return cleared;
+                })();
+            """
+            view.page().runJavaScript(script)
+            view.setFocus()
+        elif address_bar_had_focus:
+            self.setFocus()
 
     def _scroll_down(self) -> None:
         view = self._current_web_view()
@@ -239,6 +272,31 @@ class BrowserWindow(QMainWindow):
 
     def _accept_fullscreen_request(self, request: QWebEngineFullScreenRequest) -> None:
         request.accept()
+        if request.toggleOn():
+            self._enter_fullscreen()
+        else:
+            self._exit_fullscreen()
+
+    def _enter_fullscreen(self) -> None:
+        if self._is_fullscreen:
+            return
+        self._stored_geometry = self.saveGeometry()
+        self._toolbar.setVisible(False)
+        self._status_bar.setVisible(False)
+        self._tab_widget.tabBar().setVisible(False)
+        self.showFullScreen()
+        self._is_fullscreen = True
+
+    def _exit_fullscreen(self) -> None:
+        if not self._is_fullscreen:
+            return
+        self.showNormal()
+        if self._stored_geometry is not None:
+            self.restoreGeometry(self._stored_geometry)
+        self._toolbar.setVisible(True)
+        self._status_bar.setVisible(True)
+        self._tab_widget.tabBar().setVisible(True)
+        self._is_fullscreen = False
 
     def _apply_settings(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
