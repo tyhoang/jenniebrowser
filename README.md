@@ -1,0 +1,54 @@
+# JennieBrowser
+
+JennieBrowser is a tiny PyQt-based web browser aimed at daily browsing without
+extra bloat. It exposes a classic single-window UI (back/forward/reload/home,
+address bar) and bundles a lightweight rule-based ad blocker.
+
+## Features
+
+- Minimal UI with common navigation controls.
+- URL bar doubles as a search box (DuckDuckGo by default).
+- Built-in ad blocking powered by a curated EasyList-style filter list.
+- Command-line options to customise homepage, startup URL, and filter lists.
+
+## Getting Started
+
+1. Install the dependencies. A modern Python (3.9+) plus the Qt bindings are
+   required:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. Launch the browser:
+
+   ```bash
+   python -m jenniebrowser.app
+   ```
+
+   Use `python -m jenniebrowser.app --help` to see all available options.
+
+### Command-Line Options
+
+- `--homepage URL` – Set the homepage used when hitting the Home button.
+- `--filter-list PATH` – Supply extra ad-block filter files (can be used
+  multiple times). Files use a simplified EasyList syntax with support for the
+  `||domain.com`, `|http://prefix`, `*substring`, and `needle^` patterns.
+- `--no-adblock` – Disable the ad blocker at launch. You can toggle it later
+  from the toolbar.
+- `--version` – Print the current application version.
+
+If a start URL is passed as the first positional argument, JennieBrowser opens it
+immediately after launching.
+
+## Development
+
+- Format/linters are not enforced, but keeping imports sorted and code type
+  hinted is appreciated.
+- Tests are not included; manual testing is recommended after UI changes.
+
+## License
+
+This project is released under the MIT License. See [LICENSE](LICENSE).
