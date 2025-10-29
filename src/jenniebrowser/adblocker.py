@@ -64,6 +64,9 @@ class AdBlocker(QWebEngineUrlRequestInterceptor):
         if not url.isValid():
             return
 
+        if self._should_skip(url):
+            return
+
         media_types = {
             getattr(QWebEngineUrlRequestInfo.ResourceType, name)
             for name in (
@@ -83,6 +86,12 @@ class AdBlocker(QWebEngineUrlRequestInterceptor):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _should_skip(self, url: QUrl) -> bool:
+        path = url.path()
+        if "/cdn-cgi/speculation" in path:
+            return True
+        return False
+
     def _should_block(self, url: QUrl) -> bool:
         host = url.host().lower()
         url_str = url.toString().lower()

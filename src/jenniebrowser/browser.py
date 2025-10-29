@@ -184,7 +184,7 @@ class BrowserWindow(QMainWindow):
             (QKeySequence("O"), self._focus_address_bar),
             (QKeySequence("J"), self._scroll_down),
             (QKeySequence("K"), self._scroll_up),
-            (QKeySequence("Escape"), self._maybe_unfocus_address_bar),
+            (QKeySequence("Escape"), self._clear_text_focus),
             (QKeySequence("Shift+T"), self._open_new_tab),
             (QKeySequence("Shift+W"), self._close_current_tab),
             (QKeySequence("Ctrl+T"), self._open_new_tab),
@@ -199,13 +199,34 @@ class BrowserWindow(QMainWindow):
         self._address_bar.setFocus()
         self._address_bar.selectAll()
 
-    def _maybe_unfocus_address_bar(self) -> None:
-        if self._address_bar.hasFocus():
+    def _clear_text_focus(self) -> None:
+        view = self._current_web_view()
+        address_bar_had_focus = self._address_bar.hasFocus()
+        if address_bar_had_focus:
             self._address_bar.deselect()
             self._address_bar.clearFocus()
-            view = self._current_web_view()
-            if view is not None:
-                view.setFocus()
+
+        if view is not None:
+            script = """
+                (function() {
+                    let cleared = false;
+                    const active = document.activeElement;
+                    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+                        active.blur();
+                        cleared = true;
+                    }
+                    const selection = window.getSelection();
+                    if (selection && selection.rangeCount > 0) {
+                        selection.removeAllRanges();
+                        cleared = true;
+                    }
+                    return cleared;
+                })();
+            """
+            view.page().runJavaScript(script)
+            view.setFocus()
+        elif address_bar_had_focus:
+            self.setFocus()
 
     def _scroll_down(self) -> None:
         view = self._current_web_view()
