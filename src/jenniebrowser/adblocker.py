@@ -65,9 +65,14 @@ class AdBlocker(QWebEngineUrlRequestInterceptor):
             return
 
         media_types = {
-            QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMedia,
-            QWebEngineUrlRequestInfo.ResourceType.ResourceTypeVideo,
-            QWebEngineUrlRequestInfo.ResourceType.ResourceTypePlugin,
+            getattr(QWebEngineUrlRequestInfo.ResourceType, name)
+            for name in (
+                "ResourceTypeMedia",
+                "ResourceTypeVideo",
+                "ResourceTypePlugin",
+                "ResourceTypePluginResource",
+            )
+            if hasattr(QWebEngineUrlRequestInfo.ResourceType, name)
         }
         if info.resourceType() in media_types:
             return
