@@ -78,6 +78,8 @@ class BrowserWindow(QMainWindow):
         self._tab_widget.currentChanged.connect(self._on_current_tab_changed)
         self.setCentralWidget(self._tab_widget)
 
+        self._apply_dark_theme()
+
         self._new_tab_action = QAction("New Tab", self)
         self._new_tab_action.triggered.connect(self._open_new_tab)
 
@@ -166,6 +168,91 @@ class BrowserWindow(QMainWindow):
         toolbar.addAction(settings_action)
 
         return toolbar
+
+    # ------------------------------------------------------------------
+    # Appearance
+    # ------------------------------------------------------------------
+    def _apply_dark_theme(self) -> None:
+        """Apply a consistent dark appearance across the window."""
+
+        dark_stylesheet = """
+        QMainWindow {
+            background-color: #0b1120;
+            color: #e2e8f0;
+        }
+
+        QWidget {
+            color: #e2e8f0;
+            background-color: transparent;
+        }
+
+        QToolBar {
+            background-color: #111827;
+            border: none;
+            padding: 6px;
+        }
+
+        QToolBar QToolButton {
+            background: transparent;
+            color: #e2e8f0;
+            border-radius: 6px;
+            padding: 6px;
+        }
+
+        QToolBar QToolButton:hover {
+            background-color: rgba(148, 163, 184, 0.2);
+        }
+
+        QLineEdit {
+            background-color: #1f2937;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            border-radius: 18px;
+            padding: 6px 14px;
+            selection-background-color: #38bdf8;
+            selection-color: #0b1120;
+        }
+
+        QLineEdit:focus {
+            border: 1px solid #38bdf8;
+        }
+
+        QTabWidget::pane {
+            border-top: 1px solid #1f2937;
+            background: #0f172a;
+        }
+
+        QTabBar::tab {
+            background: #111827;
+            color: #cbd5f5;
+            border: 1px solid #1e293b;
+            border-bottom: none;
+            padding: 8px 18px;
+            margin-right: 2px;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+
+        QTabBar::tab:selected {
+            background: #1e293b;
+            color: #f8fafc;
+        }
+
+        QTabBar::tab:hover {
+            background: #17233b;
+        }
+
+        QStatusBar {
+            background: #0b1120;
+            color: #cbd5f5;
+        }
+
+        QMessageBox {
+            background-color: #111827;
+        }
+        """
+
+        self.setStyleSheet(dark_stylesheet)
 
     # ------------------------------------------------------------------
     # Public API

@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: dark;
         font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-        background: linear-gradient(135deg, #f0f4ff, #d9e8ff 45%, #fef6ff);
+        background: radial-gradient(circle at 20% 20%, #0f172a, #020617 60%);
       }
 
       body {
@@ -18,16 +18,18 @@
         align-items: center;
         justify-content: center;
         background: inherit;
+        color: #e2e8f0;
       }
 
       .container {
-        background-color: rgba(255, 255, 255, 0.85);
-        box-shadow: 0 25px 60px rgba(56, 96, 255, 0.18);
+        background: rgba(15, 23, 42, 0.85);
+        box-shadow: 0 20px 50px rgba(2, 6, 23, 0.65);
+        border: 1px solid rgba(51, 65, 85, 0.6);
         border-radius: 24px;
         padding: 48px 64px;
         max-width: 720px;
         width: calc(100% - 32px);
-        backdrop-filter: blur(12px);
+        backdrop-filter: blur(18px);
         text-align: center;
       }
 
@@ -36,25 +38,25 @@
         margin: 0 0 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #1d2a5c;
+        color: #f8fafc;
       }
 
       .tagline {
         margin-bottom: 40px;
         font-size: 1rem;
-        color: #44517a;
+        color: #94a3b8;
       }
 
       .clock {
         font-size: clamp(1.8rem, 4.5vw, 2.6rem);
         font-weight: 600;
         margin-bottom: 8px;
-        color: #2d3d7c;
+        color: #e0f2fe;
       }
 
       .date {
         font-size: clamp(1.1rem, 2.5vw, 1.3rem);
-        color: #5a6ba0;
+        color: #cbd5f5;
         margin-bottom: 40px;
       }
 
@@ -67,16 +69,22 @@
       input[type="search"] {
         flex: 1 1 360px;
         border-radius: 999px;
-        border: 1px solid rgba(70, 104, 185, 0.3);
+        border: 1px solid rgba(148, 163, 184, 0.3);
         padding: 14px 22px;
         font-size: 1rem;
-        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
         outline: none;
+        background: rgba(15, 23, 42, 0.9);
+        color: #f8fafc;
+      }
+
+      input[type="search"]::placeholder {
+        color: rgba(226, 232, 240, 0.6);
       }
 
       input[type="search"]:focus {
-        border-color: rgba(70, 104, 185, 0.6);
-        box-shadow: 0 0 0 3px rgba(70, 104, 185, 0.25);
+        border-color: rgba(56, 189, 248, 0.7);
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
       }
 
       button {
@@ -85,7 +93,7 @@
         padding: 14px 28px;
         font-size: 1rem;
         font-weight: 600;
-        background: linear-gradient(135deg, #4f6fe8, #7c93ff);
+        background: linear-gradient(135deg, #0ea5e9, #6366f1);
         color: white;
         cursor: pointer;
         transition: transform 0.15s ease, box-shadow 0.2s ease;
@@ -93,7 +101,7 @@
 
       button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 12px 24px rgba(79, 111, 232, 0.25);
+        box-shadow: 0 12px 24px rgba(99, 102, 241, 0.35);
       }
 
       button:active {
