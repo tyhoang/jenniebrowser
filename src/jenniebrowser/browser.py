@@ -103,27 +103,34 @@ class BrowserWindow(QMainWindow):
     def _build_toolbar(self) -> QToolBar:
         toolbar = QToolBar("Navigation", self)
         toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+
+        style = self.style()
 
         style = self.style()
 
         back_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowBack), "Back", self)
         back_action.triggered.connect(self._navigate_back)
+        back_action.setToolTip("Back (Shift+H)")
         toolbar.addAction(back_action)
 
         forward_action = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward), "Forward", self
         )
         forward_action.triggered.connect(self._navigate_forward)
+        forward_action.setToolTip("Forward (Shift+L)")
         toolbar.addAction(forward_action)
 
         reload_action = QAction(
             style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload), "Reload", self
         )
         reload_action.triggered.connect(self._reload_current)
+        reload_action.setToolTip("Reload (R)")
         toolbar.addAction(reload_action)
 
         home_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DirHomeIcon), "Home", self)
         home_action.triggered.connect(self.load_homepage)
+        home_action.setToolTip("Home")
         toolbar.addAction(home_action)
 
         toolbar.addWidget(self._address_bar)
@@ -138,6 +145,7 @@ class BrowserWindow(QMainWindow):
             style.standardIcon(QStyle.StandardPixmap.SP_FileDialogListView), "Settings", self
         )
         settings_action.triggered.connect(self._open_settings_dialog)
+        settings_action.setToolTip("Settings")
         toolbar.addAction(settings_action)
 
         return toolbar
