@@ -390,10 +390,8 @@ class BrowserWindow(QMainWindow):
         profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
         profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
-        profile.setHttpUserAgent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+        default_user_agent = profile.httpUserAgent()
+        profile.setHttpUserAgent(default_user_agent)
 
     def _configure_web_view(self, view: QWebEngineView) -> None:
         page = view.page()
