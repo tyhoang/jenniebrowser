@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
-from PyQt6.QtCore import QUrl, Qt, QByteArray, QSize
+from PyQt6.QtCore import QUrl, Qt, QByteArray
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -123,8 +123,8 @@ class BrowserWindow(QMainWindow):
         toolbar = QToolBar("Navigation", self)
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        toolbar.setIconSize(QSize(22, 22))
-        toolbar.setContentsMargins(4, 4, 4, 4)
+
+        style = self.style()
 
         style = self.style()
 
@@ -177,194 +177,78 @@ class BrowserWindow(QMainWindow):
 
         dark_stylesheet = """
         QMainWindow {
-            background-color: #070f1f;
+            background-color: #0b1120;
             color: #e2e8f0;
         }
 
         QWidget {
             color: #e2e8f0;
             background-color: transparent;
-            selection-background-color: #38bdf8;
-            selection-color: #020617;
         }
 
         QToolBar {
-            background-color: #0d182c;
-            border: 0;
-            border-bottom: 1px solid #1f2a3d;
-            padding: 6px 8px;
-            spacing: 6px;
+            background-color: #111827;
+            border: none;
+            padding: 6px;
         }
 
         QToolBar QToolButton {
             background: transparent;
-            color: #f8fafc;
-            border-radius: 8px;
+            color: #e2e8f0;
+            border-radius: 6px;
             padding: 6px;
-            margin: 0 2px;
         }
 
         QToolBar QToolButton:hover {
-            background-color: rgba(148, 163, 184, 0.22);
-        }
-
-        QToolBar QToolButton:pressed,
-        QToolBar QToolButton:checked,
-        QToolBar QToolButton:focus {
-            background-color: rgba(59, 130, 246, 0.4);
+            background-color: rgba(148, 163, 184, 0.2);
         }
 
         QLineEdit {
-            background-color: #141f33;
+            background-color: #1f2937;
             color: #f1f5f9;
-            border: 1px solid #324059;
-            border-radius: 14px;
+            border: 1px solid #334155;
+            border-radius: 18px;
             padding: 6px 14px;
-            min-height: 30px;
+            selection-background-color: #38bdf8;
+            selection-color: #0b1120;
         }
 
-        QLineEdit:focus,
-        QLineEdit:hover {
+        QLineEdit:focus {
             border: 1px solid #38bdf8;
         }
 
         QTabWidget::pane {
-            border-top: 1px solid #1b2638;
-            background: #0a1324;
-        }
-
-        QTabWidget::tab-bar {
-            left: 6px;
+            border-top: 1px solid #1f2937;
+            background: #0f172a;
         }
 
         QTabBar::tab {
-            background: #111d32;
+            background: #111827;
             color: #cbd5f5;
-            border: 1px solid transparent;
+            border: 1px solid #1e293b;
+            border-bottom: none;
+            padding: 8px 18px;
+            margin-right: 2px;
             border-top-left-radius: 10px;
             border-top-right-radius: 10px;
-            padding: 8px 18px;
-            margin-right: 4px;
-            min-width: 96px;
-        }
-
-        QTabBar::tab:!selected {
-            color: #9aa8c4;
-            border-color: transparent;
-            margin-top: 4px;
         }
 
         QTabBar::tab:selected {
-            background: #1c2a41;
+            background: #1e293b;
             color: #f8fafc;
-            border-color: #3b82f6;
-            margin-top: 0;
         }
 
         QTabBar::tab:hover {
-            background: #16263d;
-        }
-
-        QTabWidget QToolButton {
-            background: transparent;
-            color: #f8fafc;
-            border-radius: 8px;
-            padding: 6px 12px;
-        }
-
-        QTabWidget QToolButton:hover {
-            background-color: rgba(59, 130, 246, 0.3);
+            background: #17233b;
         }
 
         QStatusBar {
-            background: #070f1f;
+            background: #0b1120;
             color: #cbd5f5;
-            border-top: 1px solid #1f2a3d;
         }
 
-        QMenu {
-            background-color: #101d33;
-            border: 1px solid #24344d;
-            padding: 6px;
-        }
-
-        QMenu::item {
-            padding: 6px 18px;
-            border-radius: 6px;
-        }
-
-        QMenu::item:selected {
-            background-color: rgba(59, 130, 246, 0.35);
-            color: #f8fafc;
-        }
-
-        QScrollBar:vertical {
-            background: #0d182c;
-            border: none;
-            margin: 16px 0 16px 0;
-            width: 12px;
-            border-radius: 6px;
-        }
-
-        QScrollBar:horizontal {
-            background: #0d182c;
-            border: none;
-            margin: 0 16px 0 16px;
-            height: 12px;
-            border-radius: 6px;
-        }
-
-        QScrollBar::handle:vertical,
-        QScrollBar::handle:horizontal {
-            background: rgba(148, 163, 184, 0.45);
-            border-radius: 6px;
-        }
-
-        QScrollBar::handle:vertical:hover,
-        QScrollBar::handle:horizontal:hover {
-            background: rgba(148, 163, 184, 0.7);
-        }
-
-        QDialog,
         QMessageBox {
-            background-color: #101d33;
-        }
-
-        QDialog QPushButton,
-        QDialogButtonBox QPushButton,
-        QMessageBox QPushButton {
-            border-radius: 6px;
-            padding: 6px 14px;
-            background-color: #2563eb;
-            color: #f8fafc;
-        }
-
-        QDialog QPushButton:hover,
-        QDialogButtonBox QPushButton:hover,
-        QMessageBox QPushButton:hover {
-            background-color: #1d4ed8;
-        }
-
-        QPushButton:disabled,
-        QToolButton:disabled {
-            color: rgba(148, 163, 184, 0.4);
-            background-color: transparent;
-        }
-
-        QToolTip {
-            background-color: #1c2a41;
-            color: #f8fafc;
-            border: 1px solid #3b82f6;
-            padding: 6px 10px;
-            border-radius: 6px;
-        }
-
-        QListWidget,
-        QAbstractItemView {
-            background-color: rgba(13, 24, 44, 0.6);
-            border: 1px solid #1f2a3d;
-            selection-background-color: rgba(59, 130, 246, 0.5);
-            selection-color: #f8fafc;
+            background-color: #111827;
         }
         """
 
