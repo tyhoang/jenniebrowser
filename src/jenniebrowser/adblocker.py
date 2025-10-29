@@ -64,6 +64,14 @@ class AdBlocker(QWebEngineUrlRequestInterceptor):
         if not url.isValid():
             return
 
+        media_types = {
+            QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMedia,
+            QWebEngineUrlRequestInfo.ResourceType.ResourceTypeVideo,
+            QWebEngineUrlRequestInfo.ResourceType.ResourceTypePlugin,
+        }
+        if info.resourceType() in media_types:
+            return
+
         if self._should_block(url):
             info.block(True)
 
