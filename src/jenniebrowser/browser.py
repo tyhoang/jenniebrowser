@@ -36,12 +36,20 @@ from .history import BrowserHistory
 from .settings import BrowserSettings, CONFIG_DIR
 
 
+_START_PAGE_PATH = Path(__file__).resolve().parent / "resources" / "startpage.html"
+if _START_PAGE_PATH.exists():
+    _START_PAGE_URL = QUrl.fromLocalFile(str(_START_PAGE_PATH))
+else:
+    _START_PAGE_URL = QUrl("about:blank")
+
+
 class BrowserWindow(QMainWindow):
     """Single window browser with a minimal user interface."""
 
     def __init__(
         self,
         *,
+        start_url: QUrl | str | None = None,
         homepage: str,
         rule_paths: Iterable[Path],
         adblock_enabled: bool = True,
@@ -53,6 +61,7 @@ class BrowserWindow(QMainWindow):
         if window_icon is not None:
             self.setWindowIcon(window_icon)
 
+        self._start_page_url = _START_PAGE_URL
         self._homepage = homepage
         self._settings = BrowserSettings.load()
         self._history = BrowserHistory.load()

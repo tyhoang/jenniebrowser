@@ -57,6 +57,7 @@ def main(argv: List[str] | None = None) -> int:
     filters = _collect_filter_paths(args.filters)
 
     window = BrowserWindow(
+        start_url=start_url,
         homepage=homepage,
         rule_paths=filters,
         adblock_enabled=not args.no_adblock,
