@@ -62,7 +62,6 @@ def main(argv: List[str] | None = None) -> int:
         rule_paths=filters,
         adblock_enabled=not args.no_adblock,
         window_icon=window_icon,
-        start_url=start_url,
     )
     window.show()
     return app.exec()
