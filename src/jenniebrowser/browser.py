@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QStatusBar,
+    QStyle,
     QToolBar,
     QTabWidget,
     QToolButton,
@@ -106,37 +107,43 @@ class BrowserWindow(QMainWindow):
 
         style = self.style()
 
-        back_icon = style.standardIcon(QStyle.StandardPixmap.SP_ArrowBack)
-        back_action = QAction(back_icon, "Back", self)
+        style = self.style()
+
+        back_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_ArrowBack), "Back", self)
         back_action.triggered.connect(self._navigate_back)
         back_action.setToolTip("Back (Shift+H)")
         toolbar.addAction(back_action)
 
-        forward_icon = style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward)
-        forward_action = QAction(forward_icon, "Forward", self)
+        forward_action = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward), "Forward", self
+        )
         forward_action.triggered.connect(self._navigate_forward)
         forward_action.setToolTip("Forward (Shift+L)")
         toolbar.addAction(forward_action)
 
-        reload_icon = style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
-        reload_action = QAction(reload_icon, "Reload", self)
+        reload_action = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload), "Reload", self
+        )
         reload_action.triggered.connect(self._reload_current)
         reload_action.setToolTip("Reload (R)")
         toolbar.addAction(reload_action)
 
-        home_icon = style.standardIcon(QStyle.StandardPixmap.SP_DirHomeIcon)
-        home_action = QAction(home_icon, "Home", self)
+        home_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DirHomeIcon), "Home", self)
         home_action.triggered.connect(self.load_homepage)
         home_action.setToolTip("Home")
         toolbar.addAction(home_action)
 
         toolbar.addWidget(self._address_bar)
 
-        history_action = QAction("History", self)
+        history_action = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView), "History", self
+        )
         history_action.triggered.connect(self._open_history_dialog)
         toolbar.addAction(history_action)
 
-        settings_action = QAction("Settings", self)
+        settings_action = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_FileDialogListView), "Settings", self
+        )
         settings_action.triggered.connect(self._open_settings_dialog)
         settings_action.setToolTip("Settings")
         toolbar.addAction(settings_action)
