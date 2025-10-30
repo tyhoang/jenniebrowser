@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import shutil
+from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -34,6 +36,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
+    QWebEngineNewWindowRequest,
     QWebEnginePage,
     QWebEngineProfile,
     QWebEngineSettings,
@@ -83,19 +86,33 @@ def _ensure_logging_configured() -> logging.Logger:
 LOGGER = _ensure_logging_configured()
 
 
+@dataclass
+class _PendingNewWindowRequest:
+    user_initiated: bool
+    requested_url: QUrl | None
+
+
 class BrowserWebView(QWebEngineView):
     """Custom ``QWebEngineView`` that integrates with the tabbed UI."""
 
     def __init__(self, browser_window: "BrowserWindow") -> None:
         super().__init__(browser_window)
         self._browser_window = browser_window
+        self.page().newWindowRequested.connect(
+            self._browser_window._on_new_window_requested
+        )
 
     # Qt calls this when a page requests a new window (e.g. "open link in new tab").
     def createWindow(
         self, window_type: QWebEnginePage.WebWindowType
-    ) -> QWebEngineView | None:  # type: ignore[override]
+    ) -> QWebEngineView:  # type: ignore[override]
+        focus = window_type != QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
         LOGGER.info("createWindow requested with type %s", window_type)
-        return self._browser_window._handle_new_window_request(window_type)
+        return self._browser_window._add_tab(
+            None,
+            focus=focus,
+            load_default_url=False,
+        )
 class BrowserWindow(QMainWindow):
     """Single window browser with a minimal user interface."""
 
@@ -117,6 +134,7 @@ class BrowserWindow(QMainWindow):
         self._homepage = homepage
         self._settings = BrowserSettings.load()
         self._history = BrowserHistory.load()
+        self._pending_new_window_requests: deque[_PendingNewWindowRequest] = deque()
         resources_dir = Path(__file__).resolve().parent / "resources"
         start_page_path = resources_dir / "startpage.html"
         if start_page_path.exists():
@@ -165,7 +183,6 @@ class BrowserWindow(QMainWindow):
         self._is_fullscreen = False
         self._stored_geometry: QByteArray | None = None
         self._install_shortcuts()
-        self._block_popups = self._settings.block_popups
         self._apply_settings()
         self._add_tab(self._start_page_url)
         if start_url:
@@ -310,22 +327,6 @@ class BrowserWindow(QMainWindow):
         profile: QWebEngineProfile = QWebEngineProfile.defaultProfile()
         profile.setUrlRequestInterceptor(adblocker)
         return adblocker
-
-    def _handle_new_window_request(
-        self, window_type: QWebEnginePage.WebWindowType
-    ) -> QWebEngineView | None:
-        if self._block_popups:
-            LOGGER.info("Blocked new window request of type %s", window_type)
-            self._status_bar.showMessage("Blocked a pop-up", 3000)
-            return None
-
-        focus = window_type != QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
-        LOGGER.info("Allowing new window request of type %s", window_type)
-        return self._add_tab(
-            None,
-            focus=focus,
-            load_default_url=False,
-        )
 
     def _install_shortcuts(self) -> None:
         mappings = [
@@ -488,7 +489,6 @@ class BrowserWindow(QMainWindow):
         for view in self._iter_web_views():
             view.setZoomFactor(self._settings.zoom_factor)
         self._adblocker.set_enabled(self._settings.adblock_enabled)
-        self._block_popups = self._settings.block_popups
 
     def _iter_web_views(self) -> Iterable[QWebEngineView]:
         for index in range(self._tab_widget.count()):
@@ -715,14 +715,10 @@ class SettingsDialog(QDialog):
         self._adblock_checkbox = QCheckBox("Enable ad and tracker blocking", self)
         self._adblock_checkbox.setChecked(settings.adblock_enabled)
 
-        self._block_popups_checkbox = QCheckBox("Block pop-ups and site-opened tabs", self)
-        self._block_popups_checkbox.setChecked(settings.block_popups)
-
         form_layout = QFormLayout()
         form_layout.addRow(self._dark_mode_checkbox)
         form_layout.addRow("Zoom", self._zoom_spinbox)
         form_layout.addRow(self._adblock_checkbox)
-        form_layout.addRow(self._block_popups_checkbox)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self)
         buttons.accepted.connect(self.accept)
@@ -742,7 +738,6 @@ class SettingsDialog(QDialog):
             dark_mode=self._dark_mode_checkbox.isChecked(),
             zoom_factor=self._zoom_spinbox.value(),
             adblock_enabled=self._adblock_checkbox.isChecked(),
-            block_popups=self._block_popups_checkbox.isChecked(),
         )
         return self._settings
 
