@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import shutil
+from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -34,6 +36,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
+    QWebEngineNewWindowRequest,
     QWebEnginePage,
     QWebEngineProfile,
     QWebEngineSettings,
@@ -83,12 +86,21 @@ def _ensure_logging_configured() -> logging.Logger:
 LOGGER = _ensure_logging_configured()
 
 
+@dataclass
+class _PendingNewWindowRequest:
+    user_initiated: bool
+    requested_url: QUrl | None
+
+
 class BrowserWebView(QWebEngineView):
     """Custom ``QWebEngineView`` that integrates with the tabbed UI."""
 
     def __init__(self, browser_window: "BrowserWindow") -> None:
         super().__init__(browser_window)
         self._browser_window = browser_window
+        self.page().newWindowRequested.connect(
+            self._browser_window._on_new_window_requested
+        )
 
     # Qt calls this when a page requests a new window (e.g. "open link in new tab").
     def createWindow(
@@ -122,6 +134,7 @@ class BrowserWindow(QMainWindow):
         self._homepage = homepage
         self._settings = BrowserSettings.load()
         self._history = BrowserHistory.load()
+        self._pending_new_window_requests: deque[_PendingNewWindowRequest] = deque()
         resources_dir = Path(__file__).resolve().parent / "resources"
         start_page_path = resources_dir / "startpage.html"
         if start_page_path.exists():
