@@ -49,13 +49,86 @@ else:
     _START_PAGE_URL = QUrl("about:blank")
 
 
+_MEDIA_EXTENSIONS = (".mp4", ".m4v", ".mov")
+_MEDIA_SCHEMES = {"http", "https", "file"}
+
+
+def _is_media_url(url: QUrl) -> bool:
+    if not url.isValid():
+        return False
+    scheme = url.scheme().lower()
+    if scheme not in _MEDIA_SCHEMES:
+        return False
+    path = url.path().lower()
+    return any(path.endswith(ext) for ext in _MEDIA_EXTENSIONS)
+
+
+def _build_media_wrapper(url: QUrl) -> str | None:
+    if not _is_media_url(url):
+        return None
+
+    safe_title = escape(url.fileName() or "MP4 Video")
+    safe_src = escape(url.toString())
+    return (
+        "<!DOCTYPE html>\n"
+        "<html lang=\"en\">\n"
+        "  <head>\n"
+        "    <meta charset=\"utf-8\">\n"
+        f"    <title>{safe_title}</title>\n"
+        "    <style>\n"
+        "      :root {\n"
+        "        color-scheme: dark;\n"
+        "      }\n"
+        "      body {\n"
+        "        margin: 0;\n"
+        "        background: #111;\n"
+        "        color: #eee;\n"
+        "        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n"
+        "        display: flex;\n"
+        "        align-items: center;\n"
+        "        justify-content: center;\n"
+        "        min-height: 100vh;\n"
+        "      }\n"
+        "      main {\n"
+        "        width: 100%;\n"
+        "        padding: 1rem;\n"
+        "        box-sizing: border-box;\n"
+        "      }\n"
+        "      video {\n"
+        "        display: block;\n"
+        "        margin: 0 auto;\n"
+        "        max-width: 100%;\n"
+        "        max-height: calc(100vh - 2rem);\n"
+        "        background: #000;\n"
+        "      }\n"
+        "      p {\n"
+        "        text-align: center;\n"
+        "        margin-top: 1rem;\n"
+        "        font-size: 0.95rem;\n"
+        "      }\n"
+        "      a {\n"
+        "        color: #8ab4f8;\n"
+        "      }\n"
+        "    </style>\n"
+        "  </head>\n"
+        "  <body>\n"
+        "    <main>\n"
+        "      <video controls autoplay playsinline preload=\"metadata\">\n"
+        f"        <source src=\"{safe_src}\" type=\"video/mp4\">\n"
+        "        <p>Your system cannot play this MP4 file. <a href=\""
+        f"{safe_src}\">Download the video</a> instead.</p>\n"
+        "      </video>\n"
+        "    </main>\n"
+        "  </body>\n"
+        "</html>"
+    )
+
+
 class MediaAwareWebEnginePage(QWebEnginePage):
     """Page subclass that intercepts direct media navigations."""
 
     media_wrapper_requested = pyqtSignal(QUrl)
     media_wrapper_cleared = pyqtSignal()
-
-    _MEDIA_EXTENSIONS = (".mp4", ".m4v", ".mov")
 
     def __init__(self, parent: QWebEngineView | None = None) -> None:
         super().__init__(parent)
@@ -69,7 +142,7 @@ class MediaAwareWebEnginePage(QWebEnginePage):
         is_main_frame: bool,
     ) -> bool:
         if is_main_frame:
-            html = self._build_wrapper(url)
+            html = _build_media_wrapper(url)
             if html is not None:
                 url_string = url.toString()
                 self._current_media_source = url_string
@@ -80,74 +153,6 @@ class MediaAwareWebEnginePage(QWebEnginePage):
                 self._current_media_source = None
                 self.media_wrapper_cleared.emit()
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
-
-    def _build_wrapper(self, url: QUrl) -> str | None:
-        if not url.isValid():
-            return None
-
-        scheme = url.scheme().lower()
-        if scheme not in {"http", "https", "file"}:
-            return None
-
-        path = url.path().lower()
-        if not any(path.endswith(ext) for ext in self._MEDIA_EXTENSIONS):
-            return None
-
-        safe_title = escape(url.fileName() or "MP4 Video")
-        safe_src = escape(url.toString())
-        return (
-            "<!DOCTYPE html>\n"
-            "<html lang=\"en\">\n"
-            "  <head>\n"
-            "    <meta charset=\"utf-8\">\n"
-            f"    <title>{safe_title}</title>\n"
-            "    <style>\n"
-            "      :root {\n"
-            "        color-scheme: dark;\n"
-            "      }\n"
-            "      body {\n"
-            "        margin: 0;\n"
-            "        background: #111;\n"
-            "        color: #eee;\n"
-            "        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n"
-            "        display: flex;\n"
-            "        align-items: center;\n"
-            "        justify-content: center;\n"
-            "        min-height: 100vh;\n"
-            "      }\n"
-            "      main {\n"
-            "        width: 100%;\n"
-            "        padding: 1rem;\n"
-            "        box-sizing: border-box;\n"
-            "      }\n"
-            "      video {\n"
-            "        display: block;\n"
-            "        margin: 0 auto;\n"
-            "        max-width: 100%;\n"
-            "        max-height: calc(100vh - 2rem);\n"
-            "        background: #000;\n"
-            "      }\n"
-            "      p {\n"
-            "        text-align: center;\n"
-            "        margin-top: 1rem;\n"
-            "        font-size: 0.95rem;\n"
-            "      }\n"
-            "      a {\n"
-            "        color: #8ab4f8;\n"
-            "      }\n"
-            "    </style>\n"
-            "  </head>\n"
-            "  <body>\n"
-            "    <main>\n"
-            "      <video controls autoplay playsinline preload=\"metadata\">\n"
-            f"        <source src=\"{safe_src}\" type=\"video/mp4\">\n"
-            "        <p>Your system cannot play this MP4 file. <a href=\""
-            f"{safe_src}\">Download the video</a> instead.</p>\n"
-            "      </video>\n"
-            "    </main>\n"
-            "  </body>\n"
-            "</html>"
-        )
 
 
 class BrowserWindow(QMainWindow):
@@ -551,33 +556,26 @@ class BrowserWindow(QMainWindow):
 
     def _on_url_changed(self, view: QWebEngineView, url: QUrl) -> None:
         if self._maybe_embed_media(view, url):
-            if view is self._current_web_view():
-                if url.toString() != self._address_bar.text():
-                    self._address_bar.setText(url.toString())
             return
-
         if view is self._current_web_view():
             if url.toString() != self._address_bar.text():
                 self._address_bar.setText(url.toString())
 
     def _on_load_finished(self, view: QWebEngineView, ok: bool) -> None:
-        suppress_error = bool(view.property("jenniebrowser_media_suppress_error"))
-        if not ok and suppress_error:
-            view.setProperty("jenniebrowser_media_suppress_error", False)
-            return
-
+        media_source = view.property("jenniebrowser_media_source")
+        has_media_wrapper = isinstance(media_source, str)
+        success = ok or has_media_wrapper
         if view is self._current_web_view():
-            if ok:
+            if success:
                 self._status_bar.showMessage("Loaded", 2000)
             else:
                 self._status_bar.showMessage("Failed to load page", 4000)
                 QMessageBox.warning(self, "Load Error", "The page could not be loaded.")
-        if ok:
+        if success:
             self._update_tab_title(view, view.title() or "New Tab")
             history_url = view.url().toString()
-            media_source = view.property("jenniebrowser_media_source")
-            if isinstance(media_source, str):
-                history_url = media_source
+            if has_media_wrapper:
+                history_url = str(media_source)
             self._history.add_entry(history_url, view.title())
 
     def _update_tab_title(self, view: QWebEngineView, title: str) -> None:
@@ -598,6 +596,27 @@ class BrowserWindow(QMainWindow):
 
     def _on_media_wrapper_cleared(self, view: QWebEngineView) -> None:
         view.setProperty("jenniebrowser_media_source", None)
+
+    def _maybe_embed_media(self, view: QWebEngineView, url: QUrl) -> bool:
+        if isinstance(view.page(), MediaAwareWebEnginePage):
+            # Media-aware pages manage wrapper lifecycles internally.
+            if not _is_media_url(url) and view.property("jenniebrowser_media_source"):
+                view.setProperty("jenniebrowser_media_source", None)
+            return False
+
+        html = _build_media_wrapper(url)
+        if html is None:
+            if view.property("jenniebrowser_media_source"):
+                view.setProperty("jenniebrowser_media_source", None)
+            return False
+
+        view.setHtml(html, baseUrl=url)
+        view.setProperty("jenniebrowser_media_source", url.toString())
+        if view is self._current_web_view():
+            url_string = url.toString()
+            if url_string != self._address_bar.text():
+                self._address_bar.setText(url_string)
+        return True
 
     def _open_history_dialog(self) -> None:
         dialog = HistoryDialog(self._history, self)
