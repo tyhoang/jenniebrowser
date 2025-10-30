@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
 from html import escape
 from pathlib import Path
 from typing import Iterable, Optional
@@ -51,6 +53,35 @@ else:
 
 _MEDIA_EXTENSIONS = (".mp4", ".m4v", ".mov")
 _MEDIA_SCHEMES = {"http", "https", "file"}
+_LOG_PATH = CONFIG_DIR / "jenniebrowser.log"
+
+
+def _ensure_logging_configured() -> logging.Logger:
+    """Configure a rotating log file for runtime diagnostics."""
+
+    logger = logging.getLogger("jenniebrowser.browser")
+    if getattr(_ensure_logging_configured, "_configured", False):
+        return logger
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        _LOG_PATH,
+        maxBytes=1_048_576,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    )
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    setattr(_ensure_logging_configured, "_configured", True)
+    logger.info("Logging initialised at %s", _LOG_PATH)
+    return logger
+
+
+LOGGER = _ensure_logging_configured()
 
 
 def _is_media_url(url: QUrl) -> bool:
@@ -69,6 +100,7 @@ def _build_media_wrapper(url: QUrl) -> str | None:
 
     safe_title = escape(url.fileName() or "MP4 Video")
     safe_src = escape(url.toString())
+    LOGGER.info("Creating inline media wrapper for %s", safe_src)
     return (
         "<!DOCTYPE html>\n"
         "<html lang=\"en\">\n"
@@ -147,11 +179,13 @@ class MediaAwareWebEnginePage(QWebEnginePage):
                 url_string = url.toString()
                 self._current_media_source = url_string
                 self.media_wrapper_requested.emit(url)
+                LOGGER.info("Intercepted media navigation: %s", url_string)
                 self.setHtml(html, baseUrl=url)
                 return False
             if self._current_media_source is not None:
                 self._current_media_source = None
                 self.media_wrapper_cleared.emit()
+                LOGGER.info("Cleared media wrapper after navigating away")
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
 
@@ -501,6 +535,7 @@ class BrowserWindow(QMainWindow):
         )
         view.setPage(page)
         self._configure_web_view(view)
+        LOGGER.info("Created web view with media-aware page")
         view.urlChanged.connect(lambda url, view=view: self._on_url_changed(view, url))
         view.loadFinished.connect(lambda ok, view=view: self._on_load_finished(view, ok))
         view.titleChanged.connect(lambda title, view=view: self._update_tab_title(view, title))
@@ -520,6 +555,7 @@ class BrowserWindow(QMainWindow):
             target = self._start_page_url
         if not target.isValid():
             target = QUrl("about:blank")
+        LOGGER.info("Opening URL %s in new tab", target.toString())
         view.setUrl(target)
         return view
 
@@ -565,6 +601,18 @@ class BrowserWindow(QMainWindow):
         media_source = view.property("jenniebrowser_media_source")
         has_media_wrapper = isinstance(media_source, str)
         success = ok or has_media_wrapper
+        if not success:
+            LOGGER.warning(
+                "Load failure for %s (wrapper=%s)",
+                view.url().toString(),
+                has_media_wrapper,
+            )
+        else:
+            LOGGER.info(
+                "Load finished for %s (wrapper=%s)",
+                view.url().toString(),
+                has_media_wrapper,
+            )
         if view is self._current_web_view():
             if success:
                 self._status_bar.showMessage("Loaded", 2000)
@@ -593,9 +641,11 @@ class BrowserWindow(QMainWindow):
         if view is self._current_web_view():
             if url.toString() != self._address_bar.text():
                 self._address_bar.setText(url.toString())
+        LOGGER.info("Media wrapper active for %s", url.toString())
 
     def _on_media_wrapper_cleared(self, view: QWebEngineView) -> None:
         view.setProperty("jenniebrowser_media_source", None)
+        LOGGER.info("Media wrapper cleared")
 
     def _maybe_embed_media(self, view: QWebEngineView, url: QUrl) -> bool:
         if isinstance(view.page(), MediaAwareWebEnginePage):
@@ -616,6 +666,7 @@ class BrowserWindow(QMainWindow):
             url_string = url.toString()
             if url_string != self._address_bar.text():
                 self._address_bar.setText(url_string)
+        LOGGER.info("Embedded media wrapper manually for %s", url.toString())
         return True
 
     def _open_history_dialog(self) -> None:
