@@ -7,7 +7,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Iterable, Optional, cast
 
-from PyQt6.QtCore import QUrl, Qt, QByteArray, QEvent, QObject
+from PyQt6.QtCore import QUrl, Qt, QByteArray, QEvent, QObject, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut, QMouseEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
