@@ -5,7 +5,13 @@ import sys
 
 _spec_path_value = globals().get("__file__")
 if not _spec_path_value:
-    _spec_path_value = sys.argv[0] if sys.argv else pathlib.Path.cwd()
+    for _arg in reversed(sys.argv):
+        if _arg and _arg.endswith(".spec"):
+            _spec_path_value = _arg
+            break
+
+if not _spec_path_value:
+    _spec_path_value = pathlib.Path.cwd()
 
 project_root = pathlib.Path(_spec_path_value).resolve().parents[1]
 src_dir = project_root / "src"
