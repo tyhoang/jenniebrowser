@@ -27,4 +27,4 @@ jenniebrowser = "jenniebrowser.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"jenniebrowser" = ["resources/*.txt", "resources/*.png", "resources/*.html"]
+"jenniebrowser" = ["resources/*.txt", "resources/*.png", "resources/*.svg", "resources/*.html"]

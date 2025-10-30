@@ -31,6 +31,13 @@
         text-align: center;
       }
 
+      .logo {
+        width: clamp(80px, 18vw, 120px);
+        height: auto;
+        margin-bottom: 24px;
+        filter: drop-shadow(0 16px 32px rgba(71, 96, 214, 0.2));
+      }
+
       h1 {
         font-size: clamp(2.25rem, 5vw, 3.1rem);
         margin: 0 0 12px;
@@ -117,6 +124,7 @@
   </head>
   <body>
     <div class="container">
+      <img src="icon.svg" class="logo" alt="JennieBrowser icon" />
       <h1>JennieBrowser</h1>
       <p class="tagline">A calm space to start your browsing session.</p>
       <div class="clock" id="clock">--:--</div>
