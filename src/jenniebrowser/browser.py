@@ -169,6 +169,8 @@ class BrowserWindow(QMainWindow):
         self._status_bar = QStatusBar(self)
         self.setStatusBar(self._status_bar)
 
+        self._pending_new_window_request: QWebEngineNewWindowRequest | None = None
+
         self._address_bar = QLineEdit(self)
         self._address_bar.setClearButtonEnabled(True)
         self._address_bar.returnPressed.connect(self._on_url_entered)
@@ -327,6 +329,74 @@ class BrowserWindow(QMainWindow):
         profile: QWebEngineProfile = QWebEngineProfile.defaultProfile()
         profile.setUrlRequestInterceptor(adblocker)
         return adblocker
+
+    def _on_new_window_requested(self, request: QWebEngineNewWindowRequest) -> None:
+        if self._block_popups and not request.isUserInitiated():
+            url = request.requestedUrl().toString()
+            LOGGER.info("Blocked scripted new window request for %s", url)
+            self._status_bar.showMessage("Blocked a pop-up", 3000)
+            request.reject()
+            self._pending_new_window_request = None
+            return
+
+        LOGGER.info(
+            "Received new window request (user initiated=%s, destination=%s)",
+            request.isUserInitiated(),
+            request.destination(),
+        )
+        self._pending_new_window_request = request
+
+    def _handle_new_window_request(
+        self, window_type: QWebEnginePage.WebWindowType
+    ) -> QWebEngineView | None:
+        tab_types = {
+            QWebEnginePage.WebWindowType.WebBrowserTab,
+            QWebEnginePage.WebWindowType.WebBrowserBackgroundTab,
+        }
+
+        request = self._pending_new_window_request
+        self._pending_new_window_request = None
+
+        if (
+            request is not None
+            and self._block_popups
+            and not request.isUserInitiated()
+        ):
+            LOGGER.info(
+                "Blocked new window request of type %s due to pop-up settings",
+                window_type,
+            )
+            self._status_bar.showMessage("Blocked a pop-up", 3000)
+            request.reject()
+            return None
+
+        if self._block_popups and window_type not in tab_types:
+            LOGGER.info("Blocked new window request of type %s", window_type)
+            self._status_bar.showMessage("Blocked a pop-up", 3000)
+            if request is not None:
+                request.reject()
+            return None
+
+        focus = window_type != QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
+        view = self._add_tab(
+            None,
+            focus=focus,
+            load_default_url=False,
+        )
+        if request is not None:
+            if hasattr(request, "accept"):
+                request.accept()
+            open_in = getattr(request, "openIn", None)
+            if callable(open_in):
+                open_in(view)
+            LOGGER.info(
+                "Allowing new window request of type %s (user initiated=%s)",
+                window_type,
+                request.isUserInitiated(),
+            )
+        else:
+            LOGGER.info("Allowing new window request of type %s", window_type)
+        return view
 
     def _install_shortcuts(self) -> None:
         mappings = [
@@ -506,6 +576,7 @@ class BrowserWindow(QMainWindow):
         view = BrowserWebView(self)
         self._configure_web_view(view)
         LOGGER.info("Created web view")
+        view.page().newWindowRequested.connect(self._on_new_window_requested)
         view.urlChanged.connect(lambda url, view=view: self._on_url_changed(view, url))
         view.loadFinished.connect(lambda ok, view=view: self._on_load_finished(view, ok))
         view.titleChanged.connect(lambda title, view=view: self._update_tab_title(view, title))
