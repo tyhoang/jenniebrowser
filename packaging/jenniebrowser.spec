@@ -8,10 +8,15 @@ project_root = Path(__file__).resolve().parent.parent
 
 
 a = Analysis(
-    ['src/jenniebrowser/app.py'],
+    [str(project_root / 'src' / 'jenniebrowser' / 'app.py')],
     pathex=[str(project_root / 'src'), str(project_root)],
     binaries=[],
-    datas=[('src/jenniebrowser/resources', 'jenniebrowser/resources')],
+    datas=[
+        (
+            str(project_root / 'src' / 'jenniebrowser' / 'resources'),
+            'jenniebrowser/resources',
+        )
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
