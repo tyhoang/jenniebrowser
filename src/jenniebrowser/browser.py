@@ -238,12 +238,12 @@ class BrowserWindow(QMainWindow):
         text = self._address_bar.text().strip()
         if not text:
             return
-        if self._looks_like_url(text):
-            self._load_url(text)
+
+        url = QUrl.fromUserInput(text)
+        if self._looks_like_url(text, url):
+            self._load_url(url)
         else:
-            query = QUrl.toPercentEncoding(text)
-            search_url = f"https://duckduckgo.com/?q={query.decode('utf-8')}"
-            self._load_url(search_url)
+            self._perform_search(text)
 
     def _open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self._settings, self)
@@ -256,8 +256,16 @@ class BrowserWindow(QMainWindow):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def _load_url(self, value: str) -> None:
-        url = QUrl.fromUserInput(value)
+    def _perform_search(self, text: str) -> None:
+        query = QUrl.toPercentEncoding(text)
+        search_url = f"https://duckduckgo.com/?q={query.decode('utf-8')}"
+        self._load_url(search_url)
+
+    def _load_url(self, value: str | QUrl) -> None:
+        if isinstance(value, QUrl):
+            url = value
+        else:
+            url = QUrl.fromUserInput(value)
         if not url.isValid():
             QMessageBox.warning(self, "Invalid URL", "The address you entered is not valid.")
             return
@@ -267,12 +275,34 @@ class BrowserWindow(QMainWindow):
         else:
             view.setUrl(url)
 
-    def _looks_like_url(self, text: str) -> bool:
+    def _looks_like_url(self, text: str, url: QUrl | None = None) -> bool:
         if " " in text:
             return False
-        if text.startswith("http://") or text.startswith("https://"):
+
+        if url is None:
+            url = QUrl.fromUserInput(text)
+
+        if not url.isValid():
+            return False
+
+        scheme = url.scheme().lower()
+        if scheme in {"http", "https", "ftp"}:
+            host = url.host()
+            if not host:
+                return False
+            if host == "localhost":
+                return True
+            if host.replace(".", "").isdigit():
+                return True
+            parts = [part for part in host.split(".") if part]
+            if len(parts) >= 2 and parts[-1].isalpha():
+                return True
+            return False
+
+        if scheme in {"file", "about", "data"}:
             return True
-        return "." in text
+
+        return False
 
     def _install_adblocker(self, rule_paths: Iterable[Path], enabled: bool) -> AdBlocker:
         rule_set = RuleSet.from_paths(rule_paths)

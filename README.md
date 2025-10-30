@@ -104,6 +104,8 @@ reside alongside it and should be shipped together).
 - Format/linters are not enforced, but keeping imports sorted and code type
   hinted is appreciated.
 - Tests are not included; manual testing is recommended after UI changes.
+- To create a standalone executable, install the optional build dependencies
+  (`pip install -e .[build]`) and run the helper script: `python scripts/build_bundle.py`.
 
 ## License
 

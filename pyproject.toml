@@ -15,6 +15,11 @@ dependencies = [
     "PyQt6-WebEngine>=6.5",
 ]
 
+[project.optional-dependencies]
+build = [
+    "pyinstaller>=5.13",
+]
+
 [project.scripts]
 jenniebrowser = "jenniebrowser.app:main"
 
