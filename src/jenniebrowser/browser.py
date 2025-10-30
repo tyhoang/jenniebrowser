@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import re
 import shutil
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
@@ -53,6 +55,9 @@ else:
 
 
 _LOG_PATH = CONFIG_DIR / "jenniebrowser.log"
+
+
+_DOMAIN_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
 
 
 def _ensure_logging_configured() -> logging.Logger:
@@ -292,10 +297,16 @@ class BrowserWindow(QMainWindow):
                 return False
             if host == "localhost":
                 return True
-            if host.replace(".", "").isdigit():
+            stripped_host = host.strip("[]")
+            try:
+                ipaddress.ip_address(stripped_host)
+            except ValueError:
+                pass
+            else:
                 return True
-            parts = [part for part in host.split(".") if part]
-            if len(parts) >= 2 and parts[-1].isalpha():
+
+            labels = [label.lower() for label in host.split(".") if label]
+            if len(labels) >= 2 and all(_DOMAIN_LABEL_RE.match(label) for label in labels):
                 return True
             return False
 
