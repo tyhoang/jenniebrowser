@@ -10,6 +10,7 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Iterable, Optional, cast
+from urllib.parse import quote_plus
 
 from PyQt6.QtCore import QUrl, Qt, QByteArray, QEvent, QObject, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut, QMouseEvent
@@ -276,8 +277,8 @@ class BrowserWindow(QMainWindow):
     # Helpers
     # ------------------------------------------------------------------
     def _perform_search(self, text: str) -> None:
-        query = QUrl.toPercentEncoding(text)
-        search_url = f"https://duckduckgo.com/?q={query.decode('utf-8')}"
+        query = quote_plus(text)
+        search_url = f"https://duckduckgo.com/?q={query}"
         self._load_url(search_url)
 
     def _load_url(self, value: str | QUrl) -> None:
