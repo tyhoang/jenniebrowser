@@ -284,7 +284,12 @@ class BrowserWindow(QMainWindow):
     def _handle_new_window_request(
         self, window_type: QWebEnginePage.WebWindowType
     ) -> QWebEngineView | None:
-        if self._block_popups:
+        tab_types = {
+            QWebEnginePage.WebWindowType.WebBrowserTab,
+            QWebEnginePage.WebWindowType.WebBrowserBackgroundTab,
+        }
+
+        if self._block_popups and window_type not in tab_types:
             LOGGER.info("Blocked new window request of type %s", window_type)
             self._status_bar.showMessage("Blocked a pop-up", 3000)
             return None
