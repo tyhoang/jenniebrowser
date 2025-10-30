@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
+    QWebEnginePage,
     QWebEngineProfile,
     QWebEngineSettings,
 )
@@ -78,6 +79,26 @@ def _ensure_logging_configured() -> logging.Logger:
 
 
 LOGGER = _ensure_logging_configured()
+
+
+class BrowserWebView(QWebEngineView):
+    """Custom ``QWebEngineView`` that integrates with the tabbed UI."""
+
+    def __init__(self, browser_window: "BrowserWindow") -> None:
+        super().__init__(browser_window)
+        self._browser_window = browser_window
+
+    # Qt calls this when a page requests a new window (e.g. "open link in new tab").
+    def createWindow(
+        self, window_type: QWebEnginePage.WebWindowType
+    ) -> QWebEngineView:  # type: ignore[override]
+        focus = window_type != QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
+        LOGGER.info("createWindow requested with type %s", window_type)
+        return self._browser_window._add_tab(
+            None,
+            focus=focus,
+            load_default_url=False,
+        )
 class BrowserWindow(QMainWindow):
     """Single window browser with a minimal user interface."""
 
@@ -414,7 +435,7 @@ class BrowserWindow(QMainWindow):
         return None
 
     def _create_web_view(self) -> QWebEngineView:
-        view = QWebEngineView(self)
+        view = BrowserWebView(self)
         self._configure_web_view(view)
         LOGGER.info("Created web view")
         view.urlChanged.connect(lambda url, view=view: self._on_url_changed(view, url))
@@ -423,21 +444,31 @@ class BrowserWindow(QMainWindow):
         view.iconChanged.connect(lambda icon, view=view: self._update_tab_icon(view, icon))
         return view
 
-    def _add_tab(self, url: str | QUrl | None = None, *, focus: bool = True) -> QWebEngineView:
+    def _add_tab(
+        self,
+        url: str | QUrl | None = None,
+        *,
+        focus: bool = True,
+        load_default_url: bool = True,
+    ) -> QWebEngineView:
         view = self._create_web_view()
         index = self._tab_widget.addTab(view, "New Tab")
         if focus:
             self._tab_widget.setCurrentIndex(index)
+        target: Optional[QUrl]
         if isinstance(url, QUrl):
             target = url
         elif isinstance(url, str):
             target = QUrl.fromUserInput(url)
-        else:
+        elif load_default_url:
             target = self._start_page_url
-        if not target.isValid():
-            target = QUrl("about:blank")
-        LOGGER.info("Opening URL %s in new tab", target.toString())
-        view.setUrl(target)
+        else:
+            target = None
+        if target is not None:
+            if not target.isValid():
+                target = QUrl("about:blank")
+            LOGGER.info("Opening URL %s in new tab", target.toString())
+            view.setUrl(target)
         return view
 
     def _open_new_tab(self) -> None:
