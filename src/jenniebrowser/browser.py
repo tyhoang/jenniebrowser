@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import shutil
+from datetime import datetime
 from typing import Iterable, Optional
 
-from PyQt6.QtCore import QUrl, Qt, QByteArray
+from PyQt6.QtCore import QUrl, Qt, QByteArray, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -28,6 +29,7 @@ from PyQt6.QtWidgets import (
     QToolBar,
     QTabWidget,
     QToolButton,
+    QPushButton,
     QVBoxLayout,
 )
 from PyQt6.QtWebEngineCore import (
@@ -245,6 +247,7 @@ class BrowserWindow(QMainWindow):
 
     def _open_settings_dialog(self) -> None:
         dialog = SettingsDialog(self._settings, self)
+        dialog.clearDataRequested.connect(self._clear_site_data)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._settings = dialog.apply()
             self._apply_settings()
@@ -361,6 +364,24 @@ class BrowserWindow(QMainWindow):
         profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
         default_user_agent = profile.httpUserAgent()
         profile.setHttpUserAgent(default_user_agent)
+
+    def _clear_site_data(self) -> None:
+        profile = QWebEngineProfile.defaultProfile()
+        storage_root = CONFIG_DIR / "profile"
+        cookie_store = profile.cookieStore()
+        cookie_store.deleteAllCookies()
+        profile.clearHttpCache()
+        clear_visited = getattr(profile, "clearAllVisitedLinks", None)
+        if callable(clear_visited):
+            clear_visited()
+
+        if storage_root.exists():
+            shutil.rmtree(storage_root, ignore_errors=True)
+
+        self._apply_privacy_defaults()
+        for view in self._iter_web_views():
+            view.reload()
+        self._status_bar.showMessage("Site data cleared", 2000)
 
     def _configure_web_view(self, view: QWebEngineView) -> None:
         page = view.page()
@@ -618,6 +639,8 @@ class HistoryDialog(QDialog):
 class SettingsDialog(QDialog):
     """Modal dialog for adjusting browser settings."""
 
+    clearDataRequested = pyqtSignal()
+
     def __init__(self, settings: BrowserSettings, parent: Optional[QMainWindow] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Browser Settings")
@@ -644,6 +667,10 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
+        clear_button = QPushButton("Clear site data", self)
+        buttons.addButton(clear_button, QDialogButtonBox.ButtonRole.ActionRole)
+        clear_button.clicked.connect(self._on_clear_data_clicked)
+
         layout = QVBoxLayout()
         layout.addLayout(form_layout)
         layout.addWidget(buttons)
@@ -656,6 +683,22 @@ class SettingsDialog(QDialog):
             adblock_enabled=self._adblock_checkbox.isChecked(),
         )
         return self._settings
+
+    def _on_clear_data_clicked(self) -> None:
+        response = QMessageBox.question(
+            self,
+            "Clear site data",
+            "This will remove all cookies, cached files, and other stored site data. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if response == QMessageBox.StandardButton.Yes:
+            self.clearDataRequested.emit()
+            QMessageBox.information(
+                self,
+                "Site data cleared",
+                "All site data has been removed.",
+            )
 
 
 __all__ = ["BrowserWindow"]
