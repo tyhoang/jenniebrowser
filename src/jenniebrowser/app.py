@@ -4,14 +4,36 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version as metadata_version
 from pathlib import Path
 from typing import Iterable, List
 
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
-from . import __version__
+if __package__ in (None, ""):
+    package_root = Path(__file__).resolve().parent.parent
+    package_root_str = str(package_root)
+    if package_root_str not in sys.path:
+        sys.path.insert(0, package_root_str)
+    __package__ = "jenniebrowser"
+
 from .browser import BrowserWindow
+
+
+def _resolve_version() -> str:
+    package = import_module("jenniebrowser")
+    module_version = getattr(package, "__version__", None)
+    if module_version:
+        return str(module_version)
+    try:
+        return metadata_version("jenniebrowser")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+__version__ = _resolve_version()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
