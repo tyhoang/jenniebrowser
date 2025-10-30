@@ -224,8 +224,6 @@ class BrowserWindow(QMainWindow):
         self._tab_widget.currentChanged.connect(self._on_current_tab_changed)
         self.setCentralWidget(self._tab_widget)
 
-        self._apply_dark_theme()
-
         self._new_tab_action = QAction("New Tab", self)
         self._new_tab_action.triggered.connect(self._open_new_tab)
 
@@ -269,8 +267,8 @@ class BrowserWindow(QMainWindow):
         toolbar = QToolBar("Navigation", self)
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        toolbar.setIconSize(QSize(22, 22))
-        toolbar.setContentsMargins(4, 4, 4, 4)
+
+        style = self.style()
 
         style = self.style()
 
@@ -314,207 +312,6 @@ class BrowserWindow(QMainWindow):
         toolbar.addAction(settings_action)
 
         return toolbar
-
-    # ------------------------------------------------------------------
-    # Appearance
-    # ------------------------------------------------------------------
-    def _apply_dark_theme(self) -> None:
-        """Apply a consistent dark appearance across the window."""
-
-        dark_stylesheet = """
-        QMainWindow {
-            background-color: #070f1f;
-            color: #e2e8f0;
-        }
-
-        QWidget {
-            color: #e2e8f0;
-            background-color: transparent;
-            selection-background-color: #38bdf8;
-            selection-color: #020617;
-        }
-
-        QToolBar {
-            background-color: #0d182c;
-            border: 0;
-            border-bottom: 1px solid #1f2a3d;
-            padding: 6px 8px;
-            spacing: 6px;
-        }
-
-        QToolBar QToolButton {
-            background: transparent;
-            color: #f8fafc;
-            border-radius: 8px;
-            padding: 6px;
-            margin: 0 2px;
-        }
-
-        QToolBar QToolButton:hover {
-            background-color: rgba(148, 163, 184, 0.22);
-        }
-
-        QToolBar QToolButton:pressed,
-        QToolBar QToolButton:checked,
-        QToolBar QToolButton:focus {
-            background-color: rgba(59, 130, 246, 0.4);
-        }
-
-        QLineEdit {
-            background-color: #141f33;
-            color: #f1f5f9;
-            border: 1px solid #324059;
-            border-radius: 14px;
-            padding: 6px 14px;
-            min-height: 30px;
-        }
-
-        QLineEdit:focus,
-        QLineEdit:hover {
-            border: 1px solid #38bdf8;
-        }
-
-        QTabWidget::pane {
-            border-top: 1px solid #1b2638;
-            background: #0a1324;
-        }
-
-        QTabWidget::tab-bar {
-            left: 6px;
-        }
-
-        QTabBar::tab {
-            background: #111d32;
-            color: #cbd5f5;
-            border: 1px solid transparent;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-            padding: 8px 18px;
-            margin-right: 4px;
-            min-width: 96px;
-        }
-
-        QTabBar::tab:!selected {
-            color: #9aa8c4;
-            border-color: transparent;
-            margin-top: 4px;
-        }
-
-        QTabBar::tab:selected {
-            background: #1c2a41;
-            color: #f8fafc;
-            border-color: #3b82f6;
-            margin-top: 0;
-        }
-
-        QTabBar::tab:hover {
-            background: #16263d;
-        }
-
-        QTabWidget QToolButton {
-            background: transparent;
-            color: #f8fafc;
-            border-radius: 8px;
-            padding: 6px 12px;
-        }
-
-        QTabWidget QToolButton:hover {
-            background-color: rgba(59, 130, 246, 0.3);
-        }
-
-        QStatusBar {
-            background: #070f1f;
-            color: #cbd5f5;
-            border-top: 1px solid #1f2a3d;
-        }
-
-        QMenu {
-            background-color: #101d33;
-            border: 1px solid #24344d;
-            padding: 6px;
-        }
-
-        QMenu::item {
-            padding: 6px 18px;
-            border-radius: 6px;
-        }
-
-        QMenu::item:selected {
-            background-color: rgba(59, 130, 246, 0.35);
-            color: #f8fafc;
-        }
-
-        QScrollBar:vertical {
-            background: #0d182c;
-            border: none;
-            margin: 16px 0 16px 0;
-            width: 12px;
-            border-radius: 6px;
-        }
-
-        QScrollBar:horizontal {
-            background: #0d182c;
-            border: none;
-            margin: 0 16px 0 16px;
-            height: 12px;
-            border-radius: 6px;
-        }
-
-        QScrollBar::handle:vertical,
-        QScrollBar::handle:horizontal {
-            background: rgba(148, 163, 184, 0.45);
-            border-radius: 6px;
-        }
-
-        QScrollBar::handle:vertical:hover,
-        QScrollBar::handle:horizontal:hover {
-            background: rgba(148, 163, 184, 0.7);
-        }
-
-        QDialog,
-        QMessageBox {
-            background-color: #101d33;
-        }
-
-        QDialog QPushButton,
-        QDialogButtonBox QPushButton,
-        QMessageBox QPushButton {
-            border-radius: 6px;
-            padding: 6px 14px;
-            background-color: #2563eb;
-            color: #f8fafc;
-        }
-
-        QDialog QPushButton:hover,
-        QDialogButtonBox QPushButton:hover,
-        QMessageBox QPushButton:hover {
-            background-color: #1d4ed8;
-        }
-
-        QPushButton:disabled,
-        QToolButton:disabled {
-            color: rgba(148, 163, 184, 0.4);
-            background-color: transparent;
-        }
-
-        QToolTip {
-            background-color: #1c2a41;
-            color: #f8fafc;
-            border: 1px solid #3b82f6;
-            padding: 6px 10px;
-            border-radius: 6px;
-        }
-
-        QListWidget,
-        QAbstractItemView {
-            background-color: rgba(13, 24, 44, 0.6);
-            border: 1px solid #1f2a3d;
-            selection-background-color: rgba(59, 130, 246, 0.5);
-            selection-color: #f8fafc;
-        }
-        """
-
-        self.setStyleSheet(dark_stylesheet)
 
     # ------------------------------------------------------------------
     # Public API
