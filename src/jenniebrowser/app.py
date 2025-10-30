@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version as metadata_version
 from pathlib import Path
 from typing import Iterable, List
 
@@ -17,8 +19,21 @@ if __package__ in (None, ""):
         sys.path.insert(0, package_root_str)
     __package__ = "jenniebrowser"
 
-from . import __version__
 from .browser import BrowserWindow
+
+
+def _resolve_version() -> str:
+    package = import_module("jenniebrowser")
+    module_version = getattr(package, "__version__", None)
+    if module_version:
+        return str(module_version)
+    try:
+        return metadata_version("jenniebrowser")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+__version__ = _resolve_version()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
