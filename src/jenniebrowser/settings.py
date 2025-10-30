@@ -26,7 +26,6 @@ class BrowserSettings:
     dark_mode: bool = True
     zoom_factor: float = 1.0
     adblock_enabled: bool = True
-    block_popups: bool = True
     _path: Path = field(default=CONFIG_PATH, repr=False, compare=False)
 
     @classmethod
@@ -44,7 +43,6 @@ class BrowserSettings:
             dark_mode=bool(raw.get("dark_mode", True)),
             zoom_factor=_coerce_zoom(raw.get("zoom_factor", 1.0), 1.0),
             adblock_enabled=bool(raw.get("adblock_enabled", True)),
-            block_popups=bool(raw.get("block_popups", True)),
             _path=path,
         )
         return settings
@@ -63,7 +61,6 @@ class BrowserSettings:
         dark_mode: bool | None = None,
         zoom_factor: float | None = None,
         adblock_enabled: bool | None = None,
-        block_popups: bool | None = None,
     ) -> None:
         if dark_mode is not None:
             self.dark_mode = bool(dark_mode)
@@ -71,8 +68,6 @@ class BrowserSettings:
             self.zoom_factor = _coerce_zoom(zoom_factor, self.zoom_factor)
         if adblock_enabled is not None:
             self.adblock_enabled = bool(adblock_enabled)
-        if block_popups is not None:
-            self.block_popups = bool(block_popups)
         self.save()
 
 
