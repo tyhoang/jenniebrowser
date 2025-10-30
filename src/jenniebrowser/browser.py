@@ -6,10 +6,10 @@ from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, cast
 
-from PyQt6.QtCore import QUrl, Qt, QByteArray
-from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut
+from PyQt6.QtCore import QUrl, Qt, QByteArray, QEvent, QObject
+from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut, QMouseEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -132,6 +132,10 @@ class BrowserWindow(QMainWindow):
         self._tab_widget.setTabsClosable(True)
         self._tab_widget.tabCloseRequested.connect(self._close_tab)
         self._tab_widget.currentChanged.connect(self._on_current_tab_changed)
+        tab_bar = self._tab_widget.tabBar()
+        tab_bar.setExpanding(True)
+        tab_bar.setElideMode(Qt.TextElideMode.ElideRight)
+        tab_bar.installEventFilter(self)
         self.setCentralWidget(self._tab_widget)
 
         self._new_tab_action = QAction("New Tab", self)
@@ -537,6 +541,16 @@ class BrowserWindow(QMainWindow):
         index = self._tab_widget.indexOf(view)
         if index != -1:
             self._tab_widget.setTabIcon(index, icon)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if obj is self._tab_widget.tabBar() and event.type() == QEvent.Type.MouseButtonRelease:
+            mouse_event = cast(QMouseEvent, event)
+            if mouse_event.button() == Qt.MouseButton.MiddleButton:
+                tab_index = self._tab_widget.tabBar().tabAt(mouse_event.position().toPoint())
+                if tab_index != -1:
+                    self._close_tab(tab_index)
+                    return True
+        return super().eventFilter(obj, event)
 
     def _open_history_dialog(self) -> None:
         dialog = HistoryDialog(self._history, self)
