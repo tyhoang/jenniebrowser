@@ -13,13 +13,15 @@ from typing import Iterable, Optional, cast
 from urllib.parse import quote_plus
 
 from PyQt6.QtCore import QUrl, Qt, QByteArray, QEvent, QObject, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut, QMouseEvent
+from PyQt6.QtGui import QAction, QIcon, QKeySequence, QShortcut, QMouseEvent, QKeyEvent, QCloseEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QDoubleSpinBox,
+    QProgressDialog,
     QFormLayout,
     QLineEdit,
     QListWidget,
@@ -36,6 +38,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 from PyQt6.QtWebEngineCore import (
+    QWebEngineDownloadRequest,
     QWebEngineFullScreenRequest,
     QWebEngineNewWindowRequest,
     QWebEnginePage,
@@ -135,7 +138,8 @@ class BrowserWindow(QMainWindow):
         self._homepage = homepage
         self._settings = BrowserSettings.load()
         self._history = BrowserHistory.load()
-        self._pending_new_window_requests: deque[_PendingNewWindowRequest] = deque()
+        self._block_popups = self._settings.block_popups
+        self._active_downloads: list[DownloadProgressDialog] = []
         resources_dir = Path(__file__).resolve().parent / "resources"
         start_page_path = resources_dir / "startpage.html"
         if start_page_path.exists():
@@ -172,6 +176,17 @@ class BrowserWindow(QMainWindow):
 
         self._pending_new_window_request: QWebEngineNewWindowRequest | None = None
 
+        self._find_bar = QLineEdit(self)
+        self._find_bar.setPlaceholderText("Find in page")
+        self._find_bar.setClearButtonEnabled(True)
+        self._find_bar.setMaximumWidth(240)
+        self._find_bar.returnPressed.connect(self._find_next)
+        self._find_bar.textChanged.connect(self._on_find_text_changed)
+        self._find_bar.installEventFilter(self)
+        self._find_bar.hide()
+        self._status_bar.addPermanentWidget(self._find_bar)
+        self._last_find_text = ""
+
         self._address_bar = QLineEdit(self)
         self._address_bar.setClearButtonEnabled(True)
         self._address_bar.returnPressed.connect(self._on_url_entered)
@@ -182,15 +197,14 @@ class BrowserWindow(QMainWindow):
         self.addToolBar(self._toolbar)
 
         self._apply_privacy_defaults()
+        profile = QWebEngineProfile.defaultProfile()
+        profile.downloadRequested.connect(self._on_download_requested)
         self._shortcuts = []
         self._is_fullscreen = False
         self._stored_geometry: QByteArray | None = None
         self._install_shortcuts()
         self._apply_settings()
-        self._add_tab(self._start_page_url)
-        if start_url:
-            self._add_tab(start_url)
-        self._on_current_tab_changed(self._tab_widget.currentIndex())
+        self._initialise_tabs(start_url)
 
     # ------------------------------------------------------------------
     # Toolbar & actions
@@ -199,8 +213,6 @@ class BrowserWindow(QMainWindow):
         toolbar = QToolBar("Navigation", self)
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-
-        style = self.style()
 
         style = self.style()
 
@@ -331,6 +343,54 @@ class BrowserWindow(QMainWindow):
         profile.setUrlRequestInterceptor(adblocker)
         return adblocker
 
+    def _on_download_requested(self, download: QWebEngineDownloadRequest) -> None:
+        if download.state() != QWebEngineDownloadRequest.DownloadState.DownloadRequested:
+            return
+
+        suggested_name = download.downloadFileName() or "download"
+        default_target = Path.home() / suggested_name
+        target_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save File As",
+            str(default_target),
+        )
+        if not target_path:
+            download.cancel()
+            self._status_bar.showMessage("Download cancelled", 2000)
+            return
+
+        target = Path(target_path)
+        try:
+            download.setDownloadDirectory(str(target.parent))
+            download.setDownloadFileName(target.name)
+        except AttributeError:
+            download.setPath(str(target))
+
+        download.accept()
+        dialog = DownloadProgressDialog(download, self)
+        self._active_downloads.append(dialog)
+        dialog.finished.connect(
+            lambda _result, dlg=dialog: self._remove_download_dialog(dlg)
+        )
+        download.finished.connect(lambda: self._on_download_finished(download))
+        dialog.show()
+        self._status_bar.showMessage(f"Downloading {target.name}", 2000)
+
+    def _on_download_finished(self, download: QWebEngineDownloadRequest) -> None:
+        state = download.state()
+        name = download.downloadFileName() or "download"
+        if state == QWebEngineDownloadRequest.DownloadState.DownloadCompleted:
+            self._status_bar.showMessage(f"Downloaded {name}", 4000)
+        elif state == QWebEngineDownloadRequest.DownloadState.DownloadCancelled:
+            self._status_bar.showMessage("Download cancelled", 2000)
+        else:
+            self._status_bar.showMessage(f"Download failed for {name}", 4000)
+
+    def _remove_download_dialog(self, dialog: QProgressDialog) -> None:
+        if dialog in self._active_downloads:
+            self._active_downloads.remove(dialog)
+        dialog.deleteLater()
+
     def _on_new_window_requested(self, request: QWebEngineNewWindowRequest) -> None:
         if self._block_popups and not request.isUserInitiated():
             url = request.requestedUrl().toString()
@@ -413,6 +473,9 @@ class BrowserWindow(QMainWindow):
             (QKeySequence("Shift+W"), self._close_current_tab),
             (QKeySequence("Ctrl+T"), self._open_new_tab),
             (QKeySequence("Ctrl+W"), self._close_current_tab),
+            (QKeySequence("Ctrl+F"), self._show_find_bar),
+            (QKeySequence("F3"), self._find_next),
+            (QKeySequence("Shift+F3"), self._find_previous),
         ]
         for sequence, handler in mappings:
             shortcut = QShortcut(sequence, self)
@@ -424,6 +487,7 @@ class BrowserWindow(QMainWindow):
         self._address_bar.selectAll()
 
     def _clear_text_focus(self) -> None:
+        self._hide_find_bar()
         view = self._current_web_view()
         address_bar_had_focus = self._address_bar.hasFocus()
         if address_bar_had_focus:
@@ -451,6 +515,59 @@ class BrowserWindow(QMainWindow):
             view.setFocus()
         elif address_bar_had_focus:
             self.setFocus()
+
+    def _show_find_bar(self) -> None:
+        if not self._find_bar.isVisible():
+            self._find_bar.show()
+        if self._last_find_text and not self._find_bar.text():
+            self._find_bar.setText(self._last_find_text)
+            self._find_bar.selectAll()
+        self._find_bar.setFocus()
+
+    def _hide_find_bar(self) -> None:
+        if not self._find_bar.isVisible():
+            return
+        self._find_bar.hide()
+        view = self._current_web_view()
+        if view is not None:
+            view.findText("")
+
+    def _find_next(self) -> None:
+        text = self._find_bar.text().strip() or self._last_find_text
+        if not text:
+            return
+        self._last_find_text = text
+        self._find_in_page(text, forward=True)
+
+    def _find_previous(self) -> None:
+        text = self._find_bar.text().strip() or self._last_find_text
+        if not text:
+            return
+        self._last_find_text = text
+        self._find_in_page(text, forward=False)
+
+    def _find_in_page(self, text: str, *, forward: bool) -> None:
+        view = self._current_web_view()
+        if view is None:
+            return
+        if not text:
+            view.findText("")
+            return
+        flags = QWebEnginePage.FindFlag(0)
+        if not forward:
+            flags |= QWebEnginePage.FindFlag.FindBackward
+        view.findText(text, flags)
+
+    def _on_find_text_changed(self, text: str) -> None:
+        stripped = text.strip()
+        if not stripped:
+            self._last_find_text = ""
+            view = self._current_web_view()
+            if view is not None:
+                view.findText("")
+            return
+        self._last_find_text = stripped
+        self._find_in_page(stripped, forward=True)
 
     def _scroll_down(self) -> None:
         view = self._current_web_view()
@@ -560,6 +677,34 @@ class BrowserWindow(QMainWindow):
         for view in self._iter_web_views():
             view.setZoomFactor(self._settings.zoom_factor)
         self._adblocker.set_enabled(self._settings.adblock_enabled)
+        self._block_popups = self._settings.block_popups
+
+    def _initialise_tabs(self, start_url: QUrl | str | None) -> None:
+        targets, focus_index = self._resolve_initial_tab_targets(start_url)
+        views: list[QWebEngineView] = []
+        for target in targets:
+            view = self._add_tab(target, focus=False)
+            views.append(view)
+        if not views:
+            views.append(self._add_tab(self._start_page_url, focus=True))
+            focus_index = 0
+        focus_index = min(max(focus_index, 0), len(views) - 1)
+        self._tab_widget.setCurrentIndex(focus_index)
+        self._on_current_tab_changed(self._tab_widget.currentIndex())
+
+    def _resolve_initial_tab_targets(self, start_url: QUrl | str | None) -> tuple[list[QUrl | str], int]:
+        if start_url:
+            return ([start_url], 0)
+        if self._settings.restore_session and self._settings.last_session:
+            targets: list[str | QUrl] = []
+            for item in self._settings.last_session:
+                text = str(item).strip()
+                if text:
+                    targets.append(text)
+            if targets:
+                index = min(self._settings.last_session_index, len(targets) - 1)
+                return (targets, index)
+        return ([self._start_page_url], 0)
 
     def _iter_web_views(self) -> Iterable[QWebEngineView]:
         for index in range(self._tab_widget.count()):
@@ -629,10 +774,26 @@ class BrowserWindow(QMainWindow):
                 self._tab_widget.setTabIcon(index, QIcon())
             self._address_bar.clear()
             return
-        widget = self._tab_widget.widget(index)
-        self._tab_widget.removeTab(index)
-        if widget is not None:
-            widget.deleteLater()
+            widget = self._tab_widget.widget(index)
+            self._tab_widget.removeTab(index)
+            if widget is not None:
+                widget.deleteLater()
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # type: ignore[override]
+        self._save_session()
+        super().closeEvent(event)
+
+    def _save_session(self) -> None:
+        if not self._settings.restore_session:
+            self._settings.store_session([], 0)
+            return
+        urls: list[str] = []
+        for view in self._iter_web_views():
+            current = view.url().toString()
+            if current:
+                urls.append(current)
+        current_index = self._tab_widget.currentIndex()
+        self._settings.store_session(urls, current_index)
 
     def _on_current_tab_changed(self, index: int) -> None:
         view = self._current_web_view()
@@ -686,6 +847,11 @@ class BrowserWindow(QMainWindow):
                 if tab_index != -1:
                     self._close_tab(tab_index)
                     return True
+        if obj is self._find_bar and event.type() == QEvent.Type.KeyPress:
+            key_event = cast(QKeyEvent, event)
+            if key_event.key() == Qt.Key.Key_Escape:
+                self._hide_find_bar()
+                return True
         return super().eventFilter(obj, event)
 
     def _open_history_dialog(self) -> None:
@@ -709,6 +875,44 @@ class BrowserWindow(QMainWindow):
         view = self._current_web_view()
         if view is not None:
             view.reload()
+
+
+class DownloadProgressDialog(QProgressDialog):
+    """Lightweight progress dialog bound to a single download request."""
+
+    def __init__(self, download: QWebEngineDownloadRequest, parent: Optional[QMainWindow] = None) -> None:
+        super().__init__("Downloading…", "Cancel", 0, 100, parent)
+        self._download = download
+        self.setWindowTitle(download.downloadFileName() or "Download")
+        self.setAutoClose(False)
+        self.setAutoReset(False)
+        self.setMinimumDuration(0)
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        self.setValue(0)
+        self.setLabelText("Preparing download…")
+        download.downloadProgress.connect(self._on_progress)
+        download.finished.connect(self._on_finished)
+        self.canceled.connect(self._on_cancel)
+
+    def _on_progress(self, received: int, total: int) -> None:
+        if total <= 0:
+            self.setRange(0, 0)
+            self.setLabelText(f"{received / (1024 * 1024):.1f} MB downloaded")
+            return
+        if self.maximum() == 0:
+            self.setRange(0, 100)
+        percent = int((received / total) * 100) if total else 0
+        self.setValue(percent)
+        total_mb = total / (1024 * 1024)
+        received_mb = received / (1024 * 1024)
+        self.setLabelText(f"{received_mb:.1f} MB of {total_mb:.1f} MB ({percent}%)")
+
+    def _on_finished(self) -> None:
+        self.setValue(self.maximum())
+        self.close()
+
+    def _on_cancel(self) -> None:
+        self._download.cancel()
 
 
 class HistoryDialog(QDialog):
@@ -787,10 +991,18 @@ class SettingsDialog(QDialog):
         self._adblock_checkbox = QCheckBox("Enable ad and tracker blocking", self)
         self._adblock_checkbox.setChecked(settings.adblock_enabled)
 
+        self._popup_checkbox = QCheckBox("Block pop-ups", self)
+        self._popup_checkbox.setChecked(settings.block_popups)
+
+        self._restore_session_checkbox = QCheckBox("Restore tabs from last session", self)
+        self._restore_session_checkbox.setChecked(settings.restore_session)
+
         form_layout = QFormLayout()
         form_layout.addRow(self._dark_mode_checkbox)
         form_layout.addRow("Zoom", self._zoom_spinbox)
         form_layout.addRow(self._adblock_checkbox)
+        form_layout.addRow(self._popup_checkbox)
+        form_layout.addRow(self._restore_session_checkbox)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self)
         buttons.accepted.connect(self.accept)
@@ -810,6 +1022,8 @@ class SettingsDialog(QDialog):
             dark_mode=self._dark_mode_checkbox.isChecked(),
             zoom_factor=self._zoom_spinbox.value(),
             adblock_enabled=self._adblock_checkbox.isChecked(),
+            block_popups=self._popup_checkbox.isChecked(),
+            restore_session=self._restore_session_checkbox.isChecked(),
         )
         return self._settings
 
