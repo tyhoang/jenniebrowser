@@ -744,8 +744,10 @@ class BrowserWindow(QMainWindow):  # pylint: disable=too-many-instance-attribute
             (QKeySequence("R"), self._reload_current),
             (QKeySequence("O"), self._focus_address_bar),
             (QKeySequence("Ctrl+L"), self._focus_address_bar),
+            (QKeySequence("g,g"), self._scroll_to_top),
             (QKeySequence("J"), self._scroll_down),
             (QKeySequence("K"), self._scroll_up),
+            (QKeySequence("Shift+G"), self._scroll_to_bottom),
             (QKeySequence("Escape"), self._clear_text_focus),
             (QKeySequence("Shift+T"), self._open_new_tab),
             (QKeySequence("Shift+W"), self._close_current_tab),
@@ -1046,6 +1048,35 @@ class BrowserWindow(QMainWindow):  # pylint: disable=too-many-instance-attribute
         view.page().runJavaScript(
             "window.scrollBy({top: -120, left: 0, behavior: 'smooth'});"
         )
+
+    def _scroll_to_top(self) -> None:
+        view = self._current_web_view()
+        if view is None:
+            return
+        view.page().runJavaScript(
+            "window.scrollTo({top: 0, left: 0, behavior: 'smooth'});"
+        )
+
+    def _scroll_to_bottom(self) -> None:
+        view = self._current_web_view()
+        if view is None:
+            return
+        script = """
+            (() => {
+                const doc = document.documentElement;
+                const body = document.body;
+                const height = Math.max(
+                    doc ? doc.scrollHeight : 0,
+                    body ? body.scrollHeight : 0,
+                    doc ? doc.offsetHeight : 0,
+                    body ? body.offsetHeight : 0,
+                    doc ? doc.clientHeight : 0,
+                    body ? body.clientHeight : 0
+                );
+                window.scrollTo({top: height, left: 0, behavior: 'smooth'});
+            })();
+        """
+        view.page().runJavaScript(script)
 
     def _apply_privacy_defaults(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
