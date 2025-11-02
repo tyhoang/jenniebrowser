@@ -774,10 +774,10 @@ class BrowserWindow(QMainWindow):
                 self._tab_widget.setTabIcon(index, QIcon())
             self._address_bar.clear()
             return
-            widget = self._tab_widget.widget(index)
-            self._tab_widget.removeTab(index)
-            if widget is not None:
-                widget.deleteLater()
+        widget = self._tab_widget.widget(index)
+        self._tab_widget.removeTab(index)
+        if widget is not None:
+            widget.deleteLater()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # type: ignore[override]
         self._save_session()
