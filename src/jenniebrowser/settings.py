@@ -39,7 +39,7 @@ def _coerce_list(value: Any) -> List[str]:
 
 
 @dataclass
-class BrowserSettings:
+class BrowserSettings:  # pylint: disable=too-many-instance-attributes
     """Simple settings container stored on disk as JSON."""
 
     dark_mode: bool = True
@@ -53,6 +53,7 @@ class BrowserSettings:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "BrowserSettings":
+        """Read settings from ``path`` or create defaults when missing."""
         path = path or CONFIG_PATH
         if not path.exists():
             settings = cls(_path=path)
@@ -75,6 +76,7 @@ class BrowserSettings:
         return settings
 
     def save(self, path: Path | None = None) -> None:
+        """Persist the current configuration to disk."""
         path = path or self._path
         path.parent.mkdir(parents=True, exist_ok=True)
         data = asdict(self)
@@ -82,6 +84,7 @@ class BrowserSettings:
         with path.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, sort_keys=True)
 
+    # pylint: disable=too-many-arguments
     def update(
         self,
         *,
@@ -91,6 +94,7 @@ class BrowserSettings:
         block_popups: bool | None = None,
         restore_session: bool | None = None,
     ) -> None:
+        """Apply in-memory changes and persist them."""
         if dark_mode is not None:
             self.dark_mode = bool(dark_mode)
         if zoom_factor is not None:
@@ -104,6 +108,7 @@ class BrowserSettings:
         self.save()
 
     def store_session(self, urls: List[str], current_index: int) -> None:
+        """Persist the most recent session details for restoration."""
         self.last_session = urls
         self.last_session_index = min(max(current_index, 0), max(len(urls) - 1, 0))
         self.save()

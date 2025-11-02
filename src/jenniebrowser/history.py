@@ -43,6 +43,7 @@ class BrowserHistory:
         path: Path | None = None,
         max_entries: int = 500,
     ) -> "BrowserHistory":
+        """Instantiate history entries from ``path`` while guarding against corrupt data."""
         path = path or HISTORY_PATH
         if not path.exists():
             return cls([], path=path, max_entries=max_entries)
@@ -72,12 +73,14 @@ class BrowserHistory:
         return cls(entries, path=path, max_entries=max_entries)
 
     def save(self) -> None:
+        """Persist the most recent history entries to disk."""
         data = [asdict(entry) for entry in self._entries[-self._max_entries :]]
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2)
 
     def add_entry(self, url: str, title: str | None = None) -> None:
+        """Append a new entry unless it is empty or duplicates the current tail."""
         url = (url or "").strip()
         if not url or url.startswith("about:") or url.startswith("data:"):
             return
@@ -101,6 +104,7 @@ class BrowserHistory:
         return reversed(self._entries)
 
     def is_empty(self) -> bool:
+        """Report whether any history entries are stored."""
         return not self._entries
 
 

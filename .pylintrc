@@ -1,0 +1,15 @@
+[MASTER]
+extension-pkg-allow-list=PyQt6
+
+[TYPECHECK]
+ignored-modules=
+    PyQt6,
+    PyQt6.QtCore,
+    PyQt6.QtGui,
+    PyQt6.QtWidgets,
+    PyQt6.QtWebEngineCore,
+    PyQt6.QtWebEngineWidgets
+
+[FORMAT]
+max-line-length=100
+max-module-lines=1600

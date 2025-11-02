@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 import shutil
-from collections import deque
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Iterable, Optional, cast
+from typing import Dict, Iterable, Optional, cast
 from urllib.parse import quote_plus
 
 from PyQt6.QtCore import QUrl, Qt, QByteArray, QEvent, QObject, pyqtSignal
@@ -90,6 +90,256 @@ def _ensure_logging_configured() -> logging.Logger:
 LOGGER = _ensure_logging_configured()
 
 
+_HINT_GATHER_SCRIPT = """
+(() => {
+    try {
+        const previous = document.querySelectorAll('[data-jb-hint-id]');
+        previous.forEach(el => {
+            try {
+                delete el.dataset.jbHintId;
+            } catch (err) {
+                el.removeAttribute('data-jb-hint-id');
+            }
+        });
+
+        const selectors = [
+            'a[href]',
+            'button',
+            'input[type="button"]',
+            'input[type="submit"]',
+            'input[type="reset"]',
+            'input[type="image"]',
+            '[role="button"]',
+            '[onclick]',
+            'summary',
+            'label[for]',
+            'area[href]'
+        ].join(',');
+
+        const elements = Array.from(document.querySelectorAll(selectors));
+        const results = [];
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const limit = 400;
+        let index = 0;
+
+        for (const element of elements) {
+            if (!element || !element.isConnected) {
+                continue;
+            }
+            const rect = element.getBoundingClientRect();
+            if (!rect || (rect.width <= 1 && rect.height <= 1)) {
+                continue;
+            }
+            if (
+                rect.bottom < 0 ||
+                rect.top > viewportHeight ||
+                rect.right < 0 ||
+                rect.left > viewportWidth
+            ) {
+                continue;
+            }
+            const style = window.getComputedStyle(element);
+            if (
+                style.visibility === 'hidden' ||
+                style.display === 'none' ||
+                Number(style.opacity || '1') === 0
+            ) {
+                continue;
+            }
+            const id = 'jb-hint-' + index++;
+            element.dataset.jbHintId = id;
+            results.push({
+                id: id,
+                text: (element.getAttribute('aria-label') || element.title || element.alt || element.textContent || '').trim()
+            });
+            if (index >= limit) {
+                break;
+            }
+        }
+        return results;
+    } catch (error) {
+        console.warn('JennieBrowser hint gather failed', error);
+        return [];
+    }
+})();
+"""
+
+
+_HINT_BOOTSTRAP_SCRIPT = """
+(() => {
+    if (window.jbHints && window.jbHints.initialized) {
+        return;
+    }
+
+    const state = {
+        overlay: null,
+        items: [],
+        style: null
+    };
+
+    function ensureStyle() {
+        if (state.style && state.style.isConnected) {
+            return;
+        }
+        const style = document.createElement('style');
+        style.id = 'jb-hints-style';
+        style.textContent = [
+            '.jb-hint-label {',
+            '  background: rgba(0, 0, 0, 0.85);',
+            '  color: #f8f8f2;',
+            '  border-radius: 3px;',
+            '  padding: 1px 4px;',
+            '  font-size: 12px;',
+            '  font-family: \"Fira Code\", Menlo, Monaco, monospace;',
+            '  position: absolute;',
+            '  pointer-events: none;',
+            '  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);',
+            '}',
+            '.jb-hint-hidden { display: none !important; }',
+            '.jb-hint-highlight { background: #ffd866 !important; color: #000 !important; }'
+        ].join('\\n');
+        const root = document.head || document.documentElement;
+        root.appendChild(style);
+        state.style = style;
+    }
+
+    function ensureOverlay() {
+        if (state.overlay && state.overlay.isConnected) {
+            return state.overlay;
+        }
+        const overlay = document.createElement('div');
+        overlay.id = 'jb-hint-overlay';
+        overlay.style.position = 'absolute';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '0';
+        overlay.style.height = '0';
+        overlay.style.zIndex = '2147483647';
+        overlay.style.pointerEvents = 'none';
+        const parent = document.body || document.documentElement;
+        parent.appendChild(overlay);
+        state.overlay = overlay;
+        return overlay;
+    }
+
+    function clearOverlay() {
+        if (state.overlay) {
+            state.overlay.innerHTML = '';
+        }
+    }
+
+    function findElementById(id) {
+        return document.querySelector('[data-jb-hint-id=\"' + id + '\"]');
+    }
+
+    window.jbHints = {
+        initialized: true,
+        set(items) {
+            ensureStyle();
+            const overlay = ensureOverlay();
+            clearOverlay();
+            state.items = Array.isArray(items) ? items.slice() : [];
+            for (const item of state.items) {
+                const element = findElementById(item.id);
+                if (!element) {
+                    continue;
+                }
+                const rect = element.getBoundingClientRect();
+                const span = document.createElement('span');
+                span.className = 'jb-hint-label';
+                span.dataset.hintLabel = item.label;
+                span.style.left = (rect.left + window.scrollX) + 'px';
+                span.style.top = (rect.top + window.scrollY) + 'px';
+                span.textContent = item.label;
+                overlay.appendChild(span);
+            }
+            window.jbHints.reposition();
+        },
+        reposition() {
+            if (!state.overlay || !state.items.length) {
+                return;
+            }
+            for (const item of state.items) {
+                const element = findElementById(item.id);
+                const span = state.overlay.querySelector('[data-hint-label=\"' + item.label + '\"]');
+                if (!element || !span) {
+                    continue;
+                }
+                const rect = element.getBoundingClientRect();
+                span.style.left = (rect.left + window.scrollX) + 'px';
+                span.style.top = (rect.top + window.scrollY) + 'px';
+            }
+        },
+        filter(prefix) {
+            if (!state.overlay) {
+                return 0;
+            }
+            const normalized = (prefix || '').toLowerCase();
+            let visible = 0;
+            const spans = state.overlay.querySelectorAll('.jb-hint-label');
+            spans.forEach(span => {
+                const label = (span.dataset.hintLabel || '').toLowerCase();
+                if (!normalized || label.startsWith(normalized)) {
+                    span.classList.remove('jb-hint-hidden');
+                    if (normalized && label === normalized) {
+                        span.classList.add('jb-hint-highlight');
+                    } else {
+                        span.classList.remove('jb-hint-highlight');
+                    }
+                    visible += 1;
+                } else {
+                    span.classList.add('jb-hint-hidden');
+                    span.classList.remove('jb-hint-highlight');
+                }
+            });
+            return visible;
+        },
+        hide() {
+            if (state.overlay) {
+                state.overlay.remove();
+                state.overlay = null;
+            }
+            state.items = [];
+        },
+        activate(label) {
+            if (!label) {
+                return false;
+            }
+            const target = (state.items || []).find(item => item.label === label);
+            if (!target) {
+                return false;
+            }
+            const element = findElementById(target.id);
+            if (!element) {
+                return false;
+            }
+            if (typeof element.focus === 'function') {
+                try {
+                    element.focus({ preventScroll: true });
+                } catch (err) {
+                    try {
+                        element.focus();
+                    } catch (inner) {
+                        /* ignore */
+                    }
+                }
+            }
+            const event = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            element.dispatchEvent(event);
+            return true;
+        }
+    };
+
+    window.addEventListener('scroll', () => window.jbHints.reposition(), { passive: true });
+    window.addEventListener('resize', () => window.jbHints.reposition());
+})();
+"""
+
 @dataclass
 class _PendingNewWindowRequest:
     user_initiated: bool
@@ -107,19 +357,32 @@ class BrowserWebView(QWebEngineView):
         )
 
     # Qt calls this when a page requests a new window (e.g. "open link in new tab").
-    def createWindow(
+    def createWindow(  # pylint: disable=invalid-name
         self, window_type: QWebEnginePage.WebWindowType
     ) -> QWebEngineView:  # type: ignore[override]
+        """Return a tab for window creation requests triggered by web content."""
         focus = window_type != QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
         LOGGER.info("createWindow requested with type %s", window_type)
-        return self._browser_window._add_tab(
-            None,
-            focus=focus,
-            load_default_url=False,
-        )
-class BrowserWindow(QMainWindow):
+        return self._browser_window.open_tab_for_new_window(focus)
+
+    def keyPressEvent(  # pylint: disable=invalid-name
+        self, event: QKeyEvent
+    ) -> None:  # type: ignore[override]
+        """Let the browser consume hint shortcuts before deferring to Qt."""
+        if self._browser_window.process_hint_keypress(event):
+            return
+        if (
+            event.key() == Qt.Key.Key_F
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
+            if self._browser_window.request_hint_mode(self):
+                event.accept()
+                return
+        super().keyPressEvent(event)
+class BrowserWindow(QMainWindow):  # pylint: disable=too-many-instance-attributes
     """Single window browser with a minimal user interface."""
 
+    # pylint: disable=too-many-arguments,too-many-statements
     def __init__(
         self,
         *,
@@ -167,14 +430,25 @@ class BrowserWindow(QMainWindow):
         self._new_tab_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._new_tab_button.setText("+")
         self._new_tab_button.setToolTip("Open a new tab (Ctrl+T)")
-        self._tab_widget.setCornerWidget(self._new_tab_button, Qt.Corner.TopRightCorner)
+        self._tab_widget.setCornerWidget(
+            self._new_tab_button,
+            Qt.Corner.TopRightCorner,
+        )
 
-        self._adblocker = self._install_adblocker(rule_paths, self._settings.adblock_enabled and adblock_enabled)
+        self._adblocker = self._install_adblocker(
+            rule_paths,
+            self._settings.adblock_enabled and adblock_enabled,
+        )
 
         self._status_bar = QStatusBar(self)
         self.setStatusBar(self._status_bar)
 
         self._pending_new_window_request: QWebEngineNewWindowRequest | None = None
+
+        self._hint_mode_active = False
+        self._hint_buffer = ""
+        self._hint_targets: Dict[str, str] = {}
+        self._hint_source_view: Optional[QWebEngineView] = None
 
         self._find_bar = QLineEdit(self)
         self._find_bar.setPlaceholderText("Find in page")
@@ -235,7 +509,11 @@ class BrowserWindow(QMainWindow):
         reload_action.setToolTip("Reload (R)")
         toolbar.addAction(reload_action)
 
-        home_action = QAction(style.standardIcon(QStyle.StandardPixmap.SP_DirHomeIcon), "Home", self)
+        home_action = QAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_DirHomeIcon),
+            "Home",
+            self,
+        )
         home_action.triggered.connect(self.load_homepage)
         home_action.setToolTip("Home")
         toolbar.addAction(home_action)
@@ -261,6 +539,7 @@ class BrowserWindow(QMainWindow):
     # Public API
     # ------------------------------------------------------------------
     def load_homepage(self) -> None:
+        """Navigate the active tab to the configured homepage."""
         self._load_url(self._homepage)
 
     # ------------------------------------------------------------------
@@ -294,6 +573,7 @@ class BrowserWindow(QMainWindow):
         self._load_url(search_url)
 
     def _load_url(self, value: str | QUrl) -> None:
+        self._exit_hint_mode()
         if isinstance(value, QUrl):
             url = value
         else:
@@ -311,25 +591,23 @@ class BrowserWindow(QMainWindow):
         if " " in text:
             return False
 
-        if url is None:
-            url = QUrl.fromUserInput(text)
-
-        if not url.isValid():
+        candidate = url or QUrl.fromUserInput(text)
+        if not candidate.isValid():
             return False
 
-        scheme = url.scheme().lower()
+        scheme = candidate.scheme().lower()
         if scheme in {"http", "https", "ftp"}:
-            host = url.host()
+            host = candidate.host()
             if not host:
-                return False
-            if host == "localhost":
-                return True
-            if host.replace(".", "").isdigit():
-                return True
-            parts = [part for part in host.split(".") if part]
-            if len(parts) >= 2 and parts[-1].isalpha():
-                return True
-            return False
+                looks_like_host = False
+            elif host == "localhost":
+                looks_like_host = True
+            elif host.replace(".", "").isdigit():
+                looks_like_host = True
+            else:
+                parts = [part for part in host.split(".") if part]
+                looks_like_host = len(parts) >= 2 and parts[-1].isalpha()
+            return looks_like_host
 
         if scheme in {"file", "about", "data"}:
             return True
@@ -483,11 +761,13 @@ class BrowserWindow(QMainWindow):
             self._shortcuts.append(shortcut)
 
     def _focus_address_bar(self) -> None:
+        self._exit_hint_mode()
         self._address_bar.setFocus()
         self._address_bar.selectAll()
 
     def _clear_text_focus(self) -> None:
         self._hide_find_bar()
+        self._exit_hint_mode()
         view = self._current_web_view()
         address_bar_had_focus = self._address_bar.hasFocus()
         if address_bar_had_focus:
@@ -569,17 +849,203 @@ class BrowserWindow(QMainWindow):
         self._last_find_text = stripped
         self._find_in_page(stripped, forward=True)
 
+    # ------------------------------------------------------------------
+    # Hint mode helpers
+    # ------------------------------------------------------------------
+    def _trigger_hint_mode(self, view: QWebEngineView) -> bool:
+        if view is None:
+            return False
+        if self._hint_mode_active:
+            return True
+        self._hide_find_bar()
+        self._collect_hint_targets(view)
+        return True
+
+    def _collect_hint_targets(self, view: QWebEngineView) -> None:
+        page = view.page()
+        page.runJavaScript(
+            _HINT_GATHER_SCRIPT,
+            0,
+            lambda result, v=view: self._on_hint_candidates(v, result),
+        )
+
+    def request_hint_mode(self, view: QWebEngineView) -> bool:
+        """Entry point for hint mode requests initiated by embedded web views."""
+        return self._trigger_hint_mode(view)
+
+    def _on_hint_candidates(self, view: QWebEngineView, result: object) -> None:
+        if self._hint_source_view is not None and self._hint_source_view is not view:
+            return
+        items: list[dict[str, object]] = []
+        if isinstance(result, list):
+            for entry in result:
+                if isinstance(entry, dict) and "id" in entry:
+                    items.append(entry)
+        if not items:
+            self._status_bar.showMessage("No clickable targets found", 2000)
+            return
+        labels = self._generate_hint_labels(len(items))
+        mapping: Dict[str, str] = {}
+        payload: list[dict[str, str]] = []
+        for entry, label in zip(items, labels):
+            target_id = str(entry.get("id", ""))
+            mapping[label] = target_id
+            payload.append({"id": target_id, "label": label})
+        self._hint_mode_active = True
+        self._hint_buffer = ""
+        self._hint_targets = mapping
+        self._hint_source_view = view
+        self._status_bar.showMessage("Hint mode: type label to follow link (Esc to cancel)", 3000)
+        self._show_hint_overlay(view, payload)
+
+    @staticmethod
+    def _generate_hint_labels(count: int) -> list[str]:
+        alphabet = list("asdfghjklqwertyuiopzxcvbnm")
+        if count <= 0:
+            return []
+        if count <= len(alphabet):
+            return alphabet[:count]
+        labels = alphabet[:]
+        remaining = count - len(alphabet)
+        combinations: list[str] = []
+        for first in alphabet:
+            for second in alphabet:
+                combinations.append(first + second)
+                if len(combinations) >= remaining:
+                    break
+            if len(combinations) >= remaining:
+                break
+        labels.extend(combinations[:remaining])
+        return labels[:count]
+
+    def _show_hint_overlay(self, view: QWebEngineView, payload: list[dict[str, str]]) -> None:
+        data = json.dumps(payload)
+
+        def apply_overlay(_ignored: object) -> None:
+            view.page().runJavaScript(
+                (
+                    f"window.jbHints && window.jbHints.set({data}); "
+                    "window.jbHints && window.jbHints.filter('');"
+                ),
+                0,
+            )
+
+        view.page().runJavaScript(_HINT_BOOTSTRAP_SCRIPT, 0, apply_overlay)
+
+    def _update_hint_filter(self) -> None:
+        if self._hint_source_view is None:
+            return
+        prefix = json.dumps(self._hint_buffer)
+        self._hint_source_view.page().runJavaScript(
+            f"window.jbHints ? window.jbHints.filter({prefix}) : 0;",
+            0,
+        )
+
+    def _activate_hint_label(self, label: str) -> None:
+        view = self._hint_source_view
+        if view is None:
+            self._exit_hint_mode()
+            return
+
+        script = f"window.jbHints ? window.jbHints.activate({json.dumps(label)}) : false;"
+
+        def after_activation(result: object) -> None:
+            if not result:
+                self._status_bar.showMessage("Unable to follow hint", 2000)
+            self._exit_hint_mode()
+
+        view.page().runJavaScript(script, 0, after_activation)
+
+    def _exit_hint_mode(self) -> None:
+        if not self._hint_mode_active and self._hint_source_view is None:
+            return
+        view = self._hint_source_view
+        self._hint_mode_active = False
+        self._hint_buffer = ""
+        self._hint_targets = {}
+        self._hint_source_view = None
+        if view is not None:
+            view.page().runJavaScript(
+                "window.jbHints && window.jbHints.hide && window.jbHints.hide();",
+                0,
+            )
+
+    def _handle_hint_keypress(self, event: QKeyEvent) -> bool:
+        if not self._hint_mode_active:
+            return False
+
+        key = event.key()
+        event.accept()
+        if key in (Qt.Key.Key_Escape, Qt.Key.Key_Cancel):
+            self._status_bar.showMessage("Hint mode cancelled", 1500)
+            self._exit_hint_mode()
+            return True
+
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._activate_unique_hint_match()
+            return True
+
+        if key == Qt.Key.Key_Backspace:
+            self._handle_hint_backspace()
+            return True
+
+        text = event.text()
+        if text:
+            self._handle_hint_character(text.lower())
+        return True
+
+    def _activate_unique_hint_match(self) -> None:
+        """Follow the sole matching hint when the user presses Enter."""
+        matches = [
+            label for label in self._hint_targets if label.startswith(self._hint_buffer)
+        ]
+        if len(matches) == 1:
+            self._activate_hint_label(matches[0])
+
+    def _handle_hint_backspace(self) -> None:
+        """Adjust the hint buffer when the user presses Backspace."""
+        if self._hint_buffer:
+            self._hint_buffer = self._hint_buffer[:-1]
+            self._update_hint_filter()
+        else:
+            self._exit_hint_mode()
+
+    def _handle_hint_character(self, char: str) -> None:
+        """Append alphabetic characters and react to the resulting matches."""
+        if not char.isalpha():
+            return
+        self._hint_buffer += char
+        matches = [
+            label for label in self._hint_targets if label.startswith(self._hint_buffer)
+        ]
+        if not matches:
+            self._status_bar.showMessage("No matching hint", 1500)
+            self._hint_buffer = ""
+            self._update_hint_filter()
+            return
+        self._update_hint_filter()
+        if self._hint_buffer in self._hint_targets:
+            self._activate_hint_label(self._hint_buffer)
+
+    def process_hint_keypress(self, event: QKeyEvent) -> bool:
+        """Allow delegated key events from web views to reuse hint-mode logic."""
+        return self._handle_hint_keypress(event)
+
     def _scroll_down(self) -> None:
         view = self._current_web_view()
         if view is None:
             return
-        view.page().runJavaScript("window.scrollBy({top: 120, left: 0, behavior: 'smooth'});")
+        view.page().runJavaScript(
+            "window.scrollBy({top: 120, left: 0, behavior: 'smooth'});"
+        )
 
     def _scroll_up(self) -> None:
         view = self._current_web_view()
         if view is None:
             return
-        view.page().runJavaScript("window.scrollBy({top: -120, left: 0, behavior: 'smooth'});")
+        view.page().runJavaScript(
+            "window.scrollBy({top: -120, left: 0, behavior: 'smooth'});"
+        )
 
     def _apply_privacy_defaults(self) -> None:
         profile = QWebEngineProfile.defaultProfile()
@@ -594,7 +1060,9 @@ class BrowserWindow(QMainWindow):
         profile.setCachePath(str(cache_dir))
         if hasattr(profile, "setPersistentCookieStorePath"):
             profile.setPersistentCookieStorePath(str(cookies_dir))
-        profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
+        profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies
+        )
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
         profile.setHttpCacheMaximumSize(256 * 1024 * 1024)
         default_user_agent = profile.httpUserAgent()
@@ -670,8 +1138,16 @@ class BrowserWindow(QMainWindow):
         profile = QWebEngineProfile.defaultProfile()
         color_scheme_enum = getattr(QWebEngineProfile, "ColorScheme", None)
         if color_scheme_enum is not None:
-            dark_value = getattr(color_scheme_enum, "Dark", getattr(color_scheme_enum, "ColorSchemeDark", None))
-            light_value = getattr(color_scheme_enum, "Light", getattr(color_scheme_enum, "ColorSchemeLight", None))
+            dark_value = getattr(
+                color_scheme_enum,
+                "Dark",
+                getattr(color_scheme_enum, "ColorSchemeDark", None),
+            )
+            light_value = getattr(
+                color_scheme_enum,
+                "Light",
+                getattr(color_scheme_enum, "ColorSchemeLight", None),
+            )
             if dark_value is not None and light_value is not None:
                 profile.setColorScheme(dark_value if self._settings.dark_mode else light_value)
         for view in self._iter_web_views():
@@ -692,7 +1168,10 @@ class BrowserWindow(QMainWindow):
         self._tab_widget.setCurrentIndex(focus_index)
         self._on_current_tab_changed(self._tab_widget.currentIndex())
 
-    def _resolve_initial_tab_targets(self, start_url: QUrl | str | None) -> tuple[list[QUrl | str], int]:
+    def _resolve_initial_tab_targets(
+        self,
+        start_url: QUrl | str | None,
+    ) -> tuple[list[QUrl | str], int]:
         if start_url:
             return ([start_url], 0)
         if self._settings.restore_session and self._settings.last_session:
@@ -756,6 +1235,14 @@ class BrowserWindow(QMainWindow):
             view.setUrl(target)
         return view
 
+    def open_tab_for_new_window(self, focus: bool) -> QWebEngineView:
+        """Provision a tab for a new-window request originating from web content."""
+        return self._add_tab(
+            None,
+            focus=focus,
+            load_default_url=False,
+        )
+
     def _open_new_tab(self) -> None:
         self._add_tab(None)
         self._focus_address_bar()
@@ -769,7 +1256,12 @@ class BrowserWindow(QMainWindow):
         if self._tab_widget.count() == 1:
             view = self._tab_widget.widget(index)
             if isinstance(view, QWebEngineView):
-                view.setUrl(self._start_page_url if self._start_page_url.isValid() else QUrl("about:blank"))
+                fallback_url = (
+                    self._start_page_url
+                    if self._start_page_url.isValid()
+                    else QUrl("about:blank")
+                )
+                view.setUrl(fallback_url)
                 self._tab_widget.setTabText(index, "New Tab")
                 self._tab_widget.setTabIcon(index, QIcon())
             self._address_bar.clear()
@@ -779,7 +1271,26 @@ class BrowserWindow(QMainWindow):
         if widget is not None:
             widget.deleteLater()
 
-    def closeEvent(self, event: QCloseEvent) -> None:  # type: ignore[override]
+    def keyPressEvent(  # pylint: disable=invalid-name
+        self, event: QKeyEvent
+    ) -> None:  # type: ignore[override]
+        """Handle window-level hint shortcuts before passing to Qt."""
+        if self._handle_hint_keypress(event):
+            return
+        if (
+            event.key() == Qt.Key.Key_F
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
+            view = self._current_web_view()
+            if view is not None and self._trigger_hint_mode(view):
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def closeEvent(  # pylint: disable=invalid-name
+        self, event: QCloseEvent
+    ) -> None:  # type: ignore[override]
+        """Store session state prior to closing the window."""
         self._save_session()
         super().closeEvent(event)
 
@@ -795,7 +1306,8 @@ class BrowserWindow(QMainWindow):
         current_index = self._tab_widget.currentIndex()
         self._settings.store_session(urls, current_index)
 
-    def _on_current_tab_changed(self, index: int) -> None:
+    def _on_current_tab_changed(self, _index: int) -> None:
+        self._exit_hint_mode()
         view = self._current_web_view()
         if view is None:
             self._address_bar.clear()
@@ -804,6 +1316,8 @@ class BrowserWindow(QMainWindow):
         view.setFocus()
 
     def _on_url_changed(self, view: QWebEngineView, url: QUrl) -> None:
+        if view is self._hint_source_view:
+            self._exit_hint_mode()
         if view is self._current_web_view():
             if url.toString() != self._address_bar.text():
                 self._address_bar.setText(url.toString())
@@ -824,7 +1338,6 @@ class BrowserWindow(QMainWindow):
                 self._status_bar.showMessage("Loaded", 2000)
             else:
                 self._status_bar.showMessage("Failed to load page", 4000)
-                QMessageBox.warning(self, "Load Error", "The page could not be loaded.")
         if ok:
             self._update_tab_title(view, view.title() or "New Tab")
             self._history.add_entry(view.url().toString(), view.title())
@@ -839,7 +1352,10 @@ class BrowserWindow(QMainWindow):
         if index != -1:
             self._tab_widget.setTabIcon(index, icon)
 
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+    def eventFilter(  # pylint: disable=invalid-name
+        self, obj: QObject, event: QEvent
+    ) -> bool:
+        """Enable middle-click closing on tab bar and pass through other events."""
         if obj is self._tab_widget.tabBar() and event.type() == QEvent.Type.MouseButtonRelease:
             mouse_event = cast(QMouseEvent, event)
             if mouse_event.button() == Qt.MouseButton.MiddleButton:
@@ -877,10 +1393,14 @@ class BrowserWindow(QMainWindow):
             view.reload()
 
 
-class DownloadProgressDialog(QProgressDialog):
+class DownloadProgressDialog(QProgressDialog):  # pylint: disable=too-few-public-methods
     """Lightweight progress dialog bound to a single download request."""
 
-    def __init__(self, download: QWebEngineDownloadRequest, parent: Optional[QMainWindow] = None) -> None:
+    def __init__(
+        self,
+        download: QWebEngineDownloadRequest,
+        parent: Optional[QMainWindow] = None,
+    ) -> None:
         super().__init__("Downloading…", "Cancel", 0, 100, parent)
         self._download = download
         self.setWindowTitle(download.downloadFileName() or "Download")
@@ -915,7 +1435,7 @@ class DownloadProgressDialog(QProgressDialog):
         self._download.cancel()
 
 
-class HistoryDialog(QDialog):
+class HistoryDialog(QDialog):  # pylint: disable=too-few-public-methods
     """Simple dialog to inspect and open browsing history entries."""
 
     def __init__(self, history: BrowserHistory, parent: QMainWindow | None = None) -> None:
@@ -953,11 +1473,13 @@ class HistoryDialog(QDialog):
     def _on_current_item_changed(
         self,
         current: QListWidgetItem | None,
-        previous: QListWidgetItem | None,  # noqa: ARG002
+        _previous: QListWidgetItem | None,
     ) -> None:
+        """Toggle whether the open button is active based on selection."""
         self._open_button.setEnabled(current is not None)
 
     def selected_url(self) -> str:
+        """Return the currently highlighted URL or an empty string."""
         item = self._list.currentItem()
         if item is None:
             return ""
@@ -965,11 +1487,12 @@ class HistoryDialog(QDialog):
         return str(data) if data is not None else ""
 
     def accept(self) -> None:  # type: ignore[override]
+        """Only accept the dialog when a URL is selected."""
         if self.selected_url():
             super().accept()
 
 
-class SettingsDialog(QDialog):
+class SettingsDialog(QDialog):  # pylint: disable=too-few-public-methods
     """Modal dialog for adjusting browser settings."""
 
     clearDataRequested = pyqtSignal()
@@ -1004,7 +1527,10 @@ class SettingsDialog(QDialog):
         form_layout.addRow(self._popup_checkbox)
         form_layout.addRow(self._restore_session_checkbox)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -1018,6 +1544,7 @@ class SettingsDialog(QDialog):
         self.setLayout(layout)
 
     def apply(self) -> BrowserSettings:
+        """Return an updated settings object capturing the dialog state."""
         self._settings.update(
             dark_mode=self._dark_mode_checkbox.isChecked(),
             zoom_factor=self._zoom_spinbox.value(),
@@ -1028,6 +1555,7 @@ class SettingsDialog(QDialog):
         return self._settings
 
     def _on_clear_data_clicked(self) -> None:
+        """Emit a request to clear stored site data after user confirmation."""
         response = QMessageBox.question(
             self,
             "Clear site data",

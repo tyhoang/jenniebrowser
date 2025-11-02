@@ -51,12 +51,17 @@ class AdBlocker(QWebEngineUrlRequestInterceptor):
         self._enabled = enabled
 
     def set_enabled(self, enabled: bool) -> None:
+        """Toggle rule evaluation."""
         self._enabled = enabled
 
     def is_enabled(self) -> bool:
+        """Report whether requests are currently filtered."""
         return self._enabled
 
-    def interceptRequest(self, info: QWebEngineUrlRequestInfo) -> None:  # type: ignore[override]
+    def interceptRequest(  # pylint: disable=invalid-name
+        self, info: QWebEngineUrlRequestInfo
+    ) -> None:  # type: ignore[override]
+        """Qt callback deciding whether to block the given request."""
         if not self._enabled or not self._rules:
             return
 

@@ -12,14 +12,14 @@ from typing import Iterable, List
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
-if __package__ in (None, ""):
+try:
+    from jenniebrowser.browser import BrowserWindow
+except ModuleNotFoundError:  # pragma: no cover - fallback for direct script execution
     package_root = Path(__file__).resolve().parent.parent
-    package_root_str = str(package_root)
-    if package_root_str not in sys.path:
-        sys.path.insert(0, package_root_str)
-    __package__ = "jenniebrowser"
-
-from .browser import BrowserWindow
+    PACKAGE_ROOT_STR = str(package_root)
+    if PACKAGE_ROOT_STR not in sys.path:
+        sys.path.insert(0, PACKAGE_ROOT_STR)
+    from jenniebrowser.browser import BrowserWindow
 
 
 def _resolve_version() -> str:
@@ -37,9 +37,16 @@ __version__ = _resolve_version()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Launch the lightweight JennieBrowser web browser")
+    """Create the CLI argument parser used by the entry point."""
+    parser = argparse.ArgumentParser(
+        description="Launch the lightweight JennieBrowser web browser"
+    )
     parser.add_argument("start", nargs="?", default=None, help="Optional URL to load on startup")
-    parser.add_argument("--homepage", default="https://duckduckgo.com", help="Homepage used by the Home button")
+    parser.add_argument(
+        "--homepage",
+        default="https://duckduckgo.com",
+        help="Homepage used by the Home button",
+    )
     parser.add_argument(
         "--filter-list",
         action="append",
@@ -47,7 +54,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to an additional ad-block filter list (can be provided multiple times)",
     )
-    parser.add_argument("--no-adblock", action="store_true", help="Start without the ad blocker enabled")
+    parser.add_argument(
+        "--no-adblock",
+        action="store_true",
+        help="Start without the ad blocker enabled",
+    )
     parser.add_argument("--version", action="store_true", help="Show the version and exit")
     return parser
 
@@ -62,6 +73,7 @@ def _collect_filter_paths(extra: Iterable[str] | None) -> List[Path]:
 
 
 def main(argv: List[str] | None = None) -> int:
+    """Launch the Qt application and run the main event loop."""
     argv = list(sys.argv if argv is None else argv)
     parser = build_arg_parser()
     args = parser.parse_args(argv[1:])
